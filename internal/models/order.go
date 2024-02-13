@@ -1,9 +1,8 @@
 package models
 
 type Order struct {
+	Next   int64
 	UserId uint32
-	Rent   uint32
+	RentId uint32
 	Price  uint32
-
-	Next int64
 }

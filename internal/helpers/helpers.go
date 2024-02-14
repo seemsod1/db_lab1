@@ -94,14 +94,28 @@ func PrintNodes(file *os.File, recordPos int64) {
 	}
 }
 
-func OpenFile(filename string) (*os.File, int64, *models.SHeader) {
+func OpenSlaveFile(filename string) (*os.File, int64, *models.SHeader) {
 
 	FL, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
-	WriteModel(FL, models.SHeader{Prev: -1, Pos: 0, Next: HeaderSize}, 0)
-	return FL, HeaderSize, &models.SHeader{Prev: -1, Pos: 0, Next: HeaderSize}
+	WriteModel(FL, models.Order{Deleted: true}, 0)
+
+	WriteModel(FL, models.SHeader{Prev: -1, Pos: 0, Next: SlaveSize}, 0)
+	return FL, SlaveSize, &models.SHeader{Prev: -1, Pos: 0, Next: SlaveSize}
+}
+
+func OpenMasterFile(filename string) (*os.File, int64, *models.SHeader) {
+
+	FL, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	WriteModel(FL, models.User{Deleted: true}, 0)
+
+	WriteModel(FL, models.SHeader{Prev: -1, Pos: 0, Next: MasterSize}, 0)
+	return FL, MasterSize, &models.SHeader{Prev: -1, Pos: 0, Next: MasterSize}
 }
 
 //	func PrintSlave(slave models.Order) {
@@ -109,16 +123,25 @@ func OpenFile(filename string) (*os.File, int64, *models.SHeader) {
 //	}
 //
 // TODO: FIX UT-S COUNTRY
-func PrintSlave(slave models.Order) {
-	//str := string(slave.Country[:])
-	fmt.Printf("| %-10d | %-10d | %-10d | %-10s | %-10t | %-7d |\n", slave.UserId, slave.RentId, slave.Price, "country", slave.Deleted, slave.Next)
+func PrintSlave(slave models.Order, full bool) {
+	if full {
+		//str := string(slave.Country[:])
+		fmt.Printf("| %-10d | %-10d | %-10d | %-10s | %-10t | %-7d |\n", slave.UserId, slave.RentId, slave.Price, "country", slave.Deleted, slave.Next)
+	} else {
+		fmt.Printf("| %-10d | %-10d | %-10d | %-10s |\n", slave.UserId, slave.RentId, slave.Price, "country")
+	}
 }
+
 func PrintGarbage(garbage models.SHeader) {
 	fmt.Printf("| %-10d | %-10d | %-10d | %-10s | %-10t | %-7d |\n", garbage.Prev, garbage.Pos, garbage.Next, "garbagge", true, 0)
 }
 
-func PrintMaster(master models.User) {
-	fmt.Println(fmt.Sprintf("Id: %d\nName: %s\nMail: %s\nAge: %d\n", master.ID, master.Name, master.Mail, master.Age))
+func PrintMaster(master models.User, full bool) {
+	if full {
+		fmt.Println(fmt.Sprintf("Id: %d\nName: %s\nMail: %s\nAge: %d\n", master.ID, master.Name, master.Mail, master.Age))
+	} else {
+		fmt.Println(fmt.Sprintf("Id: %d\nName: %s\nMail: %s\n", master.ID, master.Name, master.Mail))
+	}
 }
 func GetPosition(id uint32, ind []models.IndexTable) (int64, int) {
 	for i, v := range ind {

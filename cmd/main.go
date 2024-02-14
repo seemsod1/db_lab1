@@ -15,12 +15,12 @@ var app config.AppConfig
 
 func main() {
 
-	file, pos, gab := helpers.OpenFile("user.fl")
+	file, pos, gab := helpers.OpenMasterFile("user.fl")
 	app.MasterFL = file
 	app.MasterPos = pos
 	app.GarbageMaster = gab
 
-	file, pos, gab = helpers.OpenFile("order.fl")
+	file, pos, gab = helpers.OpenSlaveFile("order.fl")
 	app.SlaveFL = file
 	app.SlavePos = pos
 	app.GarbageSlave = gab

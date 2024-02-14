@@ -58,10 +58,10 @@ func initRootCmd() *cobra.Command {
 	}
 
 	var updateSCmd = &cobra.Command{
-		Use:   "update-s <user_id> <rent_id> <price>",
+		Use:   "update-s <user_id> <rent_id> <price> <country>",
 		Short: "Update slave record in file",
 		Long:  ``,
-		Args:  cobra.ExactArgs(3),
+		Args:  cobra.ExactArgs(4),
 		Run:   handlers.Repo.UpdateS,
 	}
 
@@ -73,16 +73,16 @@ func initRootCmd() *cobra.Command {
 		Run:   handlers.Repo.DeleteS,
 	}
 
-	rootCmd.AddCommand(utilSCmd)
-	rootCmd.AddCommand(utilMCmd)
-	rootCmd.AddCommand(insertSCmd)
 	rootCmd.AddCommand(insertMCmd)
 	rootCmd.AddCommand(getMCmd)
-	rootCmd.AddCommand(getSCmd)
 	rootCmd.AddCommand(updateMCmd)
-	rootCmd.AddCommand(updateSCmd)
+	rootCmd.AddCommand(utilMCmd)
 
 	rootCmd.AddCommand(deleteSCmd)
+	rootCmd.AddCommand(utilSCmd)
+	rootCmd.AddCommand(getSCmd)
+	rootCmd.AddCommand(insertSCmd)
+	rootCmd.AddCommand(updateSCmd)
 
 	return rootCmd
 

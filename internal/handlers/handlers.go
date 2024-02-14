@@ -80,7 +80,7 @@ func (r *Repository) GetM(cmd *cobra.Command, args []string) {
 	if pos != -1 {
 		var user models.User
 		if helpers.ReadModel(r.AppConfig.MasterFL, &user, pos) {
-			helpers.PrintMaster(user)
+			helpers.PrintMaster(user, false)
 			return
 		}
 
@@ -116,7 +116,11 @@ func (r *Repository) GetS(cmd *cobra.Command, args []string) {
 		}
 
 		if tmp.RentId == uint32(rentId) {
-			helpers.PrintSlave(tmp)
+			fmt.Println("-----------------------------------------------------")
+			fmt.Printf("| %-10s | %-10s | %-10s | %-10s |\n", "UserId", "RentId", "Price", "Country")
+			fmt.Println("-----------------------------------------------------")
+			helpers.PrintSlave(tmp, false)
+			fmt.Println("-----------------------------------------------------")
 			return
 		}
 		readPos = tmp.Next
@@ -256,7 +260,7 @@ func (r *Repository) UtilM(cmd *cobra.Command, args []string) {
 	readPos := int64(0) + +helpers.HeaderSize
 	for helpers.ReadModel(r.AppConfig.MasterFL, &tmp, readPos) {
 		if !tmp.Deleted {
-			helpers.PrintMaster(tmp)
+			helpers.PrintMaster(tmp, true)
 			readPos += helpers.MasterSize
 		}
 		readPos += helpers.MasterSize
@@ -289,7 +293,7 @@ func (r *Repository) UtilS(cmd *cobra.Command, args []string) {
 	helpers.ReadModel(r.AppConfig.SlaveFL, &gab, readPos)
 	helpers.PrintGarbage(gab)
 	var tmp models.Order
-	readPos += helpers.HeaderSize
+	readPos += helpers.SlaveSize
 	fmt.Println("----------------------------------------------------------------------------")
 	for helpers.ReadModel(r.AppConfig.SlaveFL, &tmp, readPos) {
 		if tmp.Deleted {
@@ -299,7 +303,7 @@ func (r *Repository) UtilS(cmd *cobra.Command, args []string) {
 			readPos += helpers.SlaveSize
 			continue
 		}
-		helpers.PrintSlave(tmp)
+		helpers.PrintSlave(tmp, true)
 		readPos += helpers.SlaveSize
 	}
 	fmt.Println("----------------------------------------------------------------------------")
@@ -371,6 +375,10 @@ func (r *Repository) UpdateS(cmd *cobra.Command, args []string) {
 				return
 			}
 			tmp.Price = uint32(price)
+
+			country := args[3]
+
+			copy(tmp.Country[:], country)
 			if helpers.WriteModel(r.AppConfig.SlaveFL, &tmp, readPos) {
 				log.Print("Order updated")
 				return
@@ -395,7 +403,7 @@ func (r *Repository) DeleteS(cmd *cobra.Command, args []string) {
 
 	pos, index := helpers.GetPosition(uint32(userId), r.AppConfig.SlaveInd)
 	if pos == -1 {
-		fmt.Println("No orders found for this user")
+		fmt.Println("No user found")
 		return
 	}
 	readPos := pos
@@ -434,7 +442,7 @@ func (r *Repository) DeleteS(cmd *cobra.Command, args []string) {
 				//first node in linked list
 				r.AppConfig.GarbageSlave.Next = readPos
 
-				helpers.DeleteOrderNode(r.AppConfig.SlaveFL, readPos, prevPos)
+				helpers.DeleteOrderNode(r.AppConfig.SlaveFL, readPos, -1)
 
 				if !helpers.WriteModel(r.AppConfig.SlaveFL, r.AppConfig.GarbageSlave, r.AppConfig.GarbageSlave.Pos) {
 					//error handling

@@ -73,6 +73,13 @@ func initRootCmd() *cobra.Command {
 		Run:   handlers.Repo.DeleteS,
 	}
 
+	var calcSCmd = &cobra.Command{
+		Use:   "calc-s",
+		Short: "Calculate slave record from file",
+		Long:  ``,
+		Run:   handlers.Repo.CalcS,
+	}
+
 	rootCmd.AddCommand(insertMCmd)
 	rootCmd.AddCommand(getMCmd)
 	rootCmd.AddCommand(updateMCmd)
@@ -83,7 +90,10 @@ func initRootCmd() *cobra.Command {
 	rootCmd.AddCommand(getSCmd)
 	rootCmd.AddCommand(insertSCmd)
 	rootCmd.AddCommand(updateSCmd)
+	rootCmd.AddCommand(calcSCmd)
 
+	calcSCmd.Flags().Int32("user_id", -1, "Record with user_id")
+	calcSCmd.Flags().Bool("all", false, "All records in file")
 	return rootCmd
 
 }

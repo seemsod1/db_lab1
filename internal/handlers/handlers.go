@@ -494,3 +494,49 @@ func (r *Repository) DeleteS(cmd *cobra.Command, args []string) {
 	fmt.Println("Order not found")
 
 }
+
+func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
+	all, _ := cmd.Flags().GetBool("all")
+	var amount uint32
+	if all {
+		//read all orders from slave file and print them
+
+		var tmp models.Order
+		readPos := int64(0)
+		for helpers.ReadModel(r.AppConfig.SlaveFL, &tmp, readPos) {
+			if tmp.Deleted {
+				readPos += helpers.SlaveSize
+				continue
+			}
+			amount++
+			readPos += helpers.SlaveSize
+		}
+		log.Println("Total amount of orders: ", amount)
+		if err := cmd.Flags().Set("all", "false"); err != nil {
+			log.Println("Error: ", err)
+		}
+		return
+	}
+	userId, _ := cmd.Flags().GetInt32("user_id")
+	if userId > -1 {
+		userId := uint32(userId)
+
+		pos, _ := helpers.GetPosition(userId, r.AppConfig.SlaveInd)
+		if pos == -1 {
+			log.Println("No user found")
+			return
+		}
+		readPos := pos
+		var tmp models.Order
+		for readPos != -1 {
+			if !helpers.ReadModel(r.AppConfig.SlaveFL, &tmp, readPos) {
+				fmt.Println("Unable to update next_ptr. Error: read failed")
+				return
+			}
+			amount++
+			readPos = tmp.Next
+		}
+		log.Println("Total amount of orders: ", amount)
+		return
+	}
+}

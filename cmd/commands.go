@@ -24,10 +24,10 @@ func initRootCmd() *cobra.Command {
 		Run:   handlers.Repo.GetM,
 	}
 	var insertSCmd = &cobra.Command{
-		Use:   "insert-s <user_id> <rent_id> <price>",
+		Use:   "insert-s <user_id> <rent_id> <price> <country>",
 		Short: "Insert slave record into file",
 		Long:  ``,
-		Args:  cobra.ExactArgs(3),
+		Args:  cobra.ExactArgs(4),
 		Run:   handlers.Repo.InsertS,
 	}
 	var utilMCmd = &cobra.Command{
@@ -65,6 +65,14 @@ func initRootCmd() *cobra.Command {
 		Run:   handlers.Repo.UpdateS,
 	}
 
+	var deleteSCmd = &cobra.Command{
+		Use:   "delete-s <user_id> <rent_id>",
+		Short: "Delete slave record from file",
+		Long:  ``,
+		Args:  cobra.ExactArgs(2),
+		Run:   handlers.Repo.DeleteS,
+	}
+
 	rootCmd.AddCommand(utilSCmd)
 	rootCmd.AddCommand(utilMCmd)
 	rootCmd.AddCommand(insertSCmd)
@@ -73,6 +81,8 @@ func initRootCmd() *cobra.Command {
 	rootCmd.AddCommand(getSCmd)
 	rootCmd.AddCommand(updateMCmd)
 	rootCmd.AddCommand(updateSCmd)
+
+	rootCmd.AddCommand(deleteSCmd)
 
 	return rootCmd
 

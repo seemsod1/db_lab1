@@ -12,4 +12,7 @@ type AppConfig struct {
 	SlavePos  int64
 	MasterInd []models.IndexTable
 	SlaveInd  []models.IndexTable
+
+	GarbageMaster *models.SHeader
+	GarbageSlave  *models.SHeader
 }

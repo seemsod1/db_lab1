@@ -80,14 +80,23 @@ func initRootCmd() *cobra.Command {
 		Run:   handlers.Repo.CalcS,
 	}
 
+	var deleteMCmd = &cobra.Command{
+		Use:   "delete-m <id>",
+		Short: "Delete master record from file",
+		Long:  ``,
+		Args:  cobra.ExactArgs(1),
+		Run:   handlers.Repo.DeleteM,
+	}
+
 	rootCmd.AddCommand(insertMCmd)
 	rootCmd.AddCommand(getMCmd)
 	rootCmd.AddCommand(updateMCmd)
 	rootCmd.AddCommand(utilMCmd)
+	rootCmd.AddCommand(deleteMCmd)
 
 	rootCmd.AddCommand(deleteSCmd)
 	rootCmd.AddCommand(utilSCmd)
-	rootCmd.AddCommand(getSCmd)
+	rootCmd.AddCommand(getSCmd) //TODO: add flags to getSCmd user_id rent_id all
 	rootCmd.AddCommand(insertSCmd)
 	rootCmd.AddCommand(updateSCmd)
 	rootCmd.AddCommand(calcSCmd)

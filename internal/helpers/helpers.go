@@ -132,9 +132,13 @@ func PrintGarbage(garbage models.SHeader) {
 	fmt.Printf("| %-10d | %-10d | %-10d | %-10s | %-10t | %-7d |\n", garbage.Prev, garbage.Pos, garbage.Next, "garbagge", true, 0)
 }
 
+func PrintMasterGarbage(garbage models.SHeader) {
+	fmt.Printf("| %-10d | %-20d | %-20d | %-10s | %-7t | %-10d |\n", garbage.Prev, garbage.Pos, garbage.Next, "garbagge", true, 0)
+}
+
 func PrintMaster(master models.User, full bool) {
 	if full {
-		fmt.Println(fmt.Sprintf("Id: %d\nName: %s\nMail: %s\nAge: %d\n", master.ID, master.Name, master.Mail, master.Age))
+		fmt.Printf("| %-10d | %-20s | %-20s | %-10d | %-10t | %-7d |\n", master.ID, master.Name, master.Mail, master.Age, master.Deleted, master.FirstOrder)
 	} else {
 		fmt.Println(fmt.Sprintf("Id: %d\nName: %s\nMail: %s\n", master.ID, master.Name, master.Mail))
 	}

@@ -33,7 +33,7 @@ func (r *Repository) InsertM(cmd *cobra.Command, args []string) {
 
 	posIn, _ := helpers.GetPosition(uint32(id), r.AppConfig.MasterInd)
 	if posIn != -1 {
-		fmt.Println("Use another id")
+		fmt.Println("User already exist")
 		return
 	}
 
@@ -58,15 +58,7 @@ func (r *Repository) InsertM(cmd *cobra.Command, args []string) {
 		Pos:    r.AppConfig.MasterPos,
 	}
 
-	if helpers.WriteModel(r.AppConfig.MasterFL, &user, r.AppConfig.MasterPos) {
-		r.AppConfig.MasterPos += helpers.MasterSize
-
-		log.Print("User inserted")
-		r.AppConfig.MasterInd = append(r.AppConfig.MasterInd, index)
-
-	} else {
-		log.Print("User not inserted")
-	}
+	InsertMaster(r, user, index)
 }
 
 func (r *Repository) GetM(cmd *cobra.Command, args []string) {
@@ -170,8 +162,11 @@ func (r *Repository) InsertS(cmd *cobra.Command, args []string) {
 	}
 	pos, _ := helpers.GetPosition(uint32(userId), r.AppConfig.SlaveInd)
 	if pos == -1 {
-		OrderInsert(r, order)
-		r.AppConfig.SlaveInd = append(r.AppConfig.SlaveInd, index)
+		OrderInsert(r, order, index)
+
+		//change in master file
+		ChangeFirstOrder(r, userId, r.AppConfig.SlavePos)
+
 		return
 
 	}
@@ -182,29 +177,40 @@ func (r *Repository) InsertS(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	OrderInsert(r, order, lastNodePos)
+	OrderInsert(r, order, models.IndexTable{Pos: -1}, lastNodePos)
 
 }
 
 func (r *Repository) UtilM(cmd *cobra.Command, args []string) {
 	//read all users from master file and print them
+	fmt.Println("---------------------------------------------------------------------------------------------------")
+	fmt.Printf("| %-10s | %-20s | %-20s | %-10s | %-7s | %-10s |\n", "Id", "Name", "Mail", "Age", "Deleted", "FirstOrder")
+	fmt.Println("---------------------------------------------------------------------------------------------------")
+	var gab models.SHeader
+	readPos := int64(0)
+	helpers.ReadModel(r.AppConfig.MasterFL, &gab, readPos)
+	helpers.PrintMasterGarbage(gab)
 	var tmp models.User
-	readPos := int64(0) + +helpers.HeaderSize
+	readPos += helpers.MasterSize
+	fmt.Println("---------------------------------------------------------------------------------------------------")
 	for helpers.ReadModel(r.AppConfig.MasterFL, &tmp, readPos) {
-		if !tmp.Deleted {
-			helpers.PrintMaster(tmp, true)
+		if tmp.Deleted {
+			var gab models.SHeader
+			helpers.ReadModel(r.AppConfig.MasterFL, &gab, readPos)
+			helpers.PrintMasterGarbage(gab)
 			readPos += helpers.MasterSize
+			continue
 		}
+		helpers.PrintMaster(tmp, true)
 		readPos += helpers.MasterSize
 	}
-	log.Println("All users printed")
-
 }
 
 func (r *Repository) UtilS(cmd *cobra.Command, args []string) {
 	// read all orders from slave file and print them
+	format := "| %-10s | %-10s | %-10s | %-10s | %-10s | %-7s |\n"
 	fmt.Println("----------------------------------------------------------------------------")
-	fmt.Printf("| %-10s | %-10s | %-10s | %-10s | %-10s | %-7s |\n", "UserId", "RentId", "Price", "Country", "Deleted", "Next")
+	fmt.Printf(format, "UserId", "RentId", "Price", "Country", "Deleted", "Next")
 	fmt.Println("----------------------------------------------------------------------------")
 	var gab models.SHeader
 	readPos := int64(0)
@@ -338,6 +344,8 @@ func (r *Repository) DeleteS(cmd *cobra.Command, args []string) {
 				if tmp.Next == -1 {
 					//only one node in linked list
 					OrderDeletion(r, readPos, prevPos)
+					//change in master file
+					ChangeFirstOrder(r, userId, -1)
 
 					//change in index table
 					r.AppConfig.SlaveInd = append(r.AppConfig.SlaveInd[:index], r.AppConfig.SlaveInd[index+1:]...)
@@ -345,6 +353,9 @@ func (r *Repository) DeleteS(cmd *cobra.Command, args []string) {
 				}
 				//first node in linked list
 				OrderDeletion(r, readPos, prevPos)
+
+				//change in master file
+				ChangeFirstOrder(r, userId, r.AppConfig.SlavePos)
 
 				//change in index table
 				r.AppConfig.SlaveInd[index].Pos = tmp.Next
@@ -417,20 +428,35 @@ func (r *Repository) DeleteM(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	pos, index := helpers.GetPosition(uint32(id), r.AppConfig.MasterInd)
-	if pos != -1 {
-		var user models.User
-		if helpers.ReadModel(r.AppConfig.MasterFL, &user, pos) {
-			user = models.User{Deleted: true}
-			if helpers.WriteModel(r.AppConfig.MasterFL, user, pos) {
-				//add garbage node
+	userPos, index := helpers.GetPosition(uint32(id), r.AppConfig.MasterInd)
+	headPos, orderIndex := helpers.GetPosition(uint32(id), r.AppConfig.SlaveInd)
 
-				//delete from index table
-				r.AppConfig.MasterInd = append(r.AppConfig.MasterInd[:index], r.AppConfig.MasterInd[index+1:]...)
-				log.Print("User deleted")
+	if userPos != -1 {
+		var user models.User
+		if helpers.ReadModel(r.AppConfig.MasterFL, &user, userPos) {
+			//error handling
+		}
+
+		//delete all orders of user
+		readPos := headPos
+		var tmp models.Order
+		for readPos != -1 {
+			if !helpers.ReadModel(r.AppConfig.SlaveFL, &tmp, readPos) {
+				fmt.Println("Unable to update next_ptr. Error: read failed")
 				return
 			}
+			OrderDeletion(r, readPos, 0)
+			readPos = tmp.Next
 		}
+
+		UserDelete(r, userPos)
+		//change in index table
+		if headPos != -1 {
+			r.AppConfig.SlaveInd = append(r.AppConfig.SlaveInd[:orderIndex], r.AppConfig.SlaveInd[orderIndex+1:]...)
+		}
+
+		r.AppConfig.MasterInd = append(r.AppConfig.MasterInd[:index], r.AppConfig.MasterInd[index+1:]...)
+		return
 
 	}
 
@@ -445,8 +471,7 @@ func OrderDeletion(r *Repository, readPos int64, prev int64) {
 	helpers.AddGarbageNode(r.AppConfig.SlaveFL, r.AppConfig.GarbageSlave, readPos, models.Order{Deleted: true}, r.AppConfig.SlavePos)
 	log.Print("Order deleted")
 }
-
-func OrderInsert(r *Repository, order models.Order, prev ...int64) {
+func OrderInsert(r *Repository, order models.Order, index models.IndexTable, prev ...int64) {
 	var pos int64
 
 	if r.AppConfig.GarbageSlave.Prev == -1 {
@@ -457,6 +482,10 @@ func OrderInsert(r *Repository, order models.Order, prev ...int64) {
 	if len(prev) != 0 {
 		helpers.AddNode(order, r.AppConfig.SlaveFL, pos, prev[0])
 	} else {
+		if index.Pos != -1 {
+			index.Pos = pos
+			r.AppConfig.SlaveInd = append(r.AppConfig.SlaveInd, index)
+		}
 		helpers.AddNode(order, r.AppConfig.SlaveFL, pos)
 	}
 
@@ -465,7 +494,50 @@ func OrderInsert(r *Repository, order models.Order, prev ...int64) {
 	}
 	r.AppConfig.GarbageSlave = helpers.DeleteGarbageNode(r.AppConfig.SlaveFL, r.AppConfig.GarbageSlave, r.AppConfig.GarbageSlave.Prev, r.AppConfig.SlavePos)
 	if r.AppConfig.GarbageSlave == nil {
-		log.Fatal("Unable to delete node")
+		log.Fatal("Unable to delete garbage node")
 	}
 	log.Print("Order inserted")
+}
+
+func ChangeFirstOrder(r *Repository, userId int, pos int64) {
+	userPos, _ := helpers.GetPosition(uint32(userId), r.AppConfig.MasterInd)
+	var user models.User
+	if !helpers.ReadModel(r.AppConfig.MasterFL, &user, userPos) {
+		fmt.Println("Unable to update first_order. Error: read failed")
+		return
+	}
+	user.FirstOrder = pos
+	if !helpers.WriteModel(r.AppConfig.MasterFL, user, userPos) {
+		fmt.Println("Unable to update first_order. Error: write failed")
+		return
+	}
+
+}
+
+func UserDelete(r *Repository, readPos int64) {
+	helpers.AddGarbageNode(r.AppConfig.MasterFL, r.AppConfig.GarbageMaster, readPos, models.User{Deleted: true}, r.AppConfig.MasterPos)
+	log.Print("User deleted")
+}
+
+func InsertMaster(r *Repository, user models.User, index models.IndexTable) {
+	var pos int64
+	if r.AppConfig.GarbageMaster.Prev == -1 {
+		pos = r.AppConfig.GarbageMaster.Next
+	} else {
+		pos = r.AppConfig.GarbageMaster.Pos
+		index.Pos = pos
+	}
+	if !helpers.WriteModel(r.AppConfig.MasterFL, &user, pos) {
+		log.Fatal("Unable to insert user")
+	}
+
+	r.AppConfig.MasterInd = append(r.AppConfig.MasterInd, index)
+	if r.AppConfig.GarbageMaster.Prev == -1 {
+		r.AppConfig.MasterPos += helpers.MasterSize
+	}
+	r.AppConfig.GarbageMaster = helpers.DeleteGarbageNode(r.AppConfig.MasterFL, r.AppConfig.GarbageMaster, r.AppConfig.GarbageMaster.Prev, r.AppConfig.MasterPos)
+	if r.AppConfig.GarbageMaster == nil {
+		log.Fatal("Unable to delete garbage node")
+	}
+	log.Print("User inserted")
 }

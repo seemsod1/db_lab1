@@ -8,12 +8,13 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"unsafe"
 )
 
 const MasterSize = int64(unsafe.Sizeof(models.User{}))
 const SlaveSize = int64(unsafe.Sizeof(models.Order{}))
-const HeaderSize = int64(unsafe.Sizeof(models.SHeader{}))
+const MaxAge = 18
 
 // TODO: EOF
 func ReadModel(file *os.File, model any, position int64) bool {
@@ -36,7 +37,7 @@ func WriteModel(file *os.File, model any, position int64) bool {
 	_, err = file.Write(binBuf.Bytes())
 
 	if err != nil {
-		log.Fatal(err)
+		return false
 	}
 
 	file.Sync()
@@ -47,14 +48,14 @@ func SetNextPtr(file *os.File, recordPos int64, nextRecordPos int64) bool {
 	var tmp models.Order
 
 	if !ReadModel(file, &tmp, recordPos) {
-		fmt.Println("Unable to set next ptr. Read failed")
+		fmt.Println("Error: Read failed")
 		return false
 	}
 
 	tmp.Next = nextRecordPos
 
 	if !WriteModel(file, tmp, recordPos) {
-		fmt.Println("Unable to set next ptr. Read failed")
+		fmt.Println("Error: Write failed")
 		return false
 	}
 	return true
@@ -68,6 +69,7 @@ func AddNode(record models.Order, file *os.File, pos int64, prevRecordPos ...int
 		prev = prevRecordPos[0]
 	}
 	if !WriteModel(file, record, pos) {
+		fmt.Println("Error: write failed")
 		return false
 	}
 
@@ -76,22 +78,6 @@ func AddNode(record models.Order, file *os.File, pos int64, prevRecordPos ...int
 	}
 
 	return SetNextPtr(file, prev, pos)
-}
-
-func PrintNodes(file *os.File, recordPos int64) {
-	var tmp models.Order
-
-	readPos := recordPos
-	fmt.Println("Linked List:")
-	for readPos != -1 {
-		if !ReadModel(file, &tmp, readPos) {
-			fmt.Println("Unable to update next_ptr. Error: read failed")
-			return
-		}
-
-		fmt.Println(fmt.Sprintf("UserId: %d\nRentId: %d\nPrice: %d\n", tmp.UserId, tmp.RentId, tmp.Price))
-		readPos = tmp.Next
-	}
 }
 
 func OpenSlaveFile(filename string) (*os.File, int64, *models.SHeader) {
@@ -108,7 +94,7 @@ func OpenSlaveFile(filename string) (*os.File, int64, *models.SHeader) {
 
 func OpenMasterFile(filename string) (*os.File, int64, *models.SHeader) {
 
-	FL, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0666)
+	FL, err := os.OpenFile(filename+".fl", os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -118,31 +104,6 @@ func OpenMasterFile(filename string) (*os.File, int64, *models.SHeader) {
 	return FL, MasterSize, &models.SHeader{Prev: -1, Pos: 0, Next: MasterSize}
 }
 
-// TODO: FIX UT-S COUNTRY
-func PrintSlave(slave models.Order, full bool) {
-	if full {
-		//str := string(slave.Country[:])
-		fmt.Printf("| %-10d | %-10d | %-10d | %-10s | %-10t | %-7d |\n", slave.UserId, slave.RentId, slave.Price, "country", slave.Deleted, slave.Next)
-	} else {
-		fmt.Printf("| %-10d | %-10d | %-10d | %-10s |\n", slave.UserId, slave.RentId, slave.Price, "country")
-	}
-}
-
-func PrintGarbage(garbage models.SHeader) {
-	fmt.Printf("| %-10d | %-10d | %-10d | %-10s | %-10t | %-7d |\n", garbage.Prev, garbage.Pos, garbage.Next, "garbagge", true, 0)
-}
-
-func PrintMasterGarbage(garbage models.SHeader) {
-	fmt.Printf("| %-10d | %-20d | %-20d | %-10s | %-7t | %-10d |\n", garbage.Prev, garbage.Pos, garbage.Next, "garbagge", true, 0)
-}
-
-func PrintMaster(master models.User, full bool) {
-	if full {
-		fmt.Printf("| %-10d | %-20s | %-20s | %-10d | %-10t | %-7d |\n", master.ID, master.Name, master.Mail, master.Age, master.Deleted, master.FirstOrder)
-	} else {
-		fmt.Println(fmt.Sprintf("Id: %d\nName: %s\nMail: %s\n", master.ID, master.Name, master.Mail))
-	}
-}
 func GetPosition(id uint32, ind []models.IndexTable) (int64, int) {
 	for i, v := range ind {
 		if v.UserId == id {
@@ -158,7 +119,7 @@ func FindLastNode(file *os.File, recordPos int64) int64 {
 	readPos := recordPos
 	for readPos != -1 {
 		if !ReadModel(file, &tmp, readPos) {
-			fmt.Println("Unable to update next_ptr. Error: read failed")
+			fmt.Println("Error: read failed")
 			return -1
 		}
 		if tmp.Next == -1 {
@@ -169,62 +130,91 @@ func FindLastNode(file *os.File, recordPos int64) int64 {
 	return readPos
 }
 
-func DeleteOrderNode(file *os.File, recordPos int64, prevRecordPos int64) {
+func DeleteOrderNode(file *os.File, recordPos int64, prevRecordPos int64) bool {
 	var tmp models.Order
 	if !ReadModel(file, &tmp, recordPos) {
-		fmt.Println("Unable to delete node. Error: read failed")
-		return
+		fmt.Println("Error: read failed")
+		return false
 	}
 
 	if prevRecordPos == -1 {
 		tmp.Deleted = true
-		WriteModel(file, tmp, recordPos)
-		return
+		if !WriteModel(file, tmp, recordPos) {
+			fmt.Println("Error: write failed")
+			return false
+		}
+
+		return true
 	}
 
 	var prev models.Order
 	if !ReadModel(file, &prev, prevRecordPos) {
-		fmt.Println("Unable to delete node. Error: read failed")
-		return
+		fmt.Println("Error: read failed")
+		return false
 	}
 
 	prev.Next = tmp.Next
-	WriteModel(file, prev, prevRecordPos)
+	if !WriteModel(file, prev, prevRecordPos) {
+		fmt.Println("Error: write failed")
+		return false
+	}
 	tmp.Deleted = true
-	WriteModel(file, tmp, recordPos)
+	if !WriteModel(file, tmp, recordPos) {
+		fmt.Println("Error: write failed")
+		return false
+	}
+	return true
 }
 
-func AddGarbageNode(file *os.File, garbageSlave *models.SHeader, readPos int64, data any, posInFile int64) {
+func AddGarbageNode(file *os.File, garbageSlave *models.SHeader, readPos int64, data any, posInFile int64) bool {
 	garbageSlave.Next = readPos
 	if !WriteModel(file, garbageSlave, garbageSlave.Pos) {
-		// error handling
+		fmt.Println("Error: write failed")
+		return false
 	}
 	if !WriteModel(file, data, readPos) {
-		// error handling
+		fmt.Println("Error: write failed")
+		return false
 	}
 	garbageSlave.Prev = garbageSlave.Pos
 	garbageSlave.Pos = readPos
 	garbageSlave.Next = posInFile
 	if !WriteModel(file, garbageSlave, readPos) {
-		// error handling
+		fmt.Println("Error: write failed")
+		return false
 	}
+	return true
 }
 
 func DeleteGarbageNode(file *os.File, actualNode *models.SHeader, prevRecordPos int64, posInFile int64) *models.SHeader {
 
 	if actualNode.Prev == -1 {
 		actualNode.Next = posInFile
-		WriteModel(file, actualNode, actualNode.Pos)
+		if !WriteModel(file, actualNode, actualNode.Pos) {
+			fmt.Println("Error: write failed")
+			return nil
+		}
 		return actualNode
 	}
 
 	var prev models.SHeader
 	if !ReadModel(file, &prev, prevRecordPos) {
-		fmt.Println("Unable to delete node. Error: read failed")
+		fmt.Println("Error: read failed")
 		return nil
 	}
 
 	prev.Next = actualNode.Next
-	WriteModel(file, prev, prevRecordPos)
+	if !WriteModel(file, prev, prevRecordPos) {
+		fmt.Println("Error: write failed")
+		return nil
+	}
 	return &prev
+}
+
+func ByteArrayToString(bytes []byte) string {
+	return strings.TrimRight(string(bytes), "\x00")
+}
+
+func NumberOfRecords(indices []models.IndexTable) int {
+	return len(indices)
 }

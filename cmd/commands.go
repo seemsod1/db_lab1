@@ -5,7 +5,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func initRootCmd() *cobra.Command {
+func initRootCommands() *cobra.Command {
 
 	var rootCmd = &cobra.Command{Use: "app"}
 	var insertMCmd = &cobra.Command{
@@ -17,10 +17,10 @@ func initRootCmd() *cobra.Command {
 	}
 
 	var getMCmd = &cobra.Command{
-		Use:   "get-m <id>",
+		Use:   "get-m <id> [flags]",
 		Short: "Get master record from file",
 		Long:  ``,
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		Run:   handlers.Repo.GetM,
 	}
 	var insertSCmd = &cobra.Command{
@@ -43,10 +43,10 @@ func initRootCmd() *cobra.Command {
 		Run:   handlers.Repo.UtilS,
 	}
 	var getSCmd = &cobra.Command{
-		Use:   "get-s <user_id> <rent_id>",
+		Use:   "get-s <user_id> <rent_id> [flags]",
 		Short: "Get slave record from file",
 		Long:  ``,
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.MinimumNArgs(2),
 		Run:   handlers.Repo.GetS,
 	}
 	var updateMCmd = &cobra.Command{
@@ -77,6 +77,7 @@ func initRootCmd() *cobra.Command {
 		Use:   "calc-s",
 		Short: "Calculate slave record from file",
 		Long:  ``,
+		Args:  cobra.ExactArgs(1),
 		Run:   handlers.Repo.CalcS,
 	}
 
@@ -88,12 +89,20 @@ func initRootCmd() *cobra.Command {
 		Run:   handlers.Repo.DeleteM,
 	}
 
+	var calcMCmd = &cobra.Command{
+		Use:   "calc-m",
+		Short: "Calculate master record from file",
+		Long:  ``,
+		Args:  cobra.NoArgs,
+		Run:   handlers.Repo.CalcM,
+	}
+
 	rootCmd.AddCommand(insertMCmd)
 	rootCmd.AddCommand(getMCmd)
 	rootCmd.AddCommand(updateMCmd)
 	rootCmd.AddCommand(utilMCmd)
 	rootCmd.AddCommand(deleteMCmd)
-
+	rootCmd.AddCommand(calcMCmd)
 	rootCmd.AddCommand(deleteSCmd)
 	rootCmd.AddCommand(utilSCmd)
 	rootCmd.AddCommand(getSCmd) //TODO: add flags to getSCmd user_id rent_id all
@@ -101,8 +110,6 @@ func initRootCmd() *cobra.Command {
 	rootCmd.AddCommand(updateSCmd)
 	rootCmd.AddCommand(calcSCmd)
 
-	calcSCmd.Flags().Int32("user_id", -1, "Record with user_id")
-	calcSCmd.Flags().Bool("all", false, "All records in file")
 	return rootCmd
 
 }

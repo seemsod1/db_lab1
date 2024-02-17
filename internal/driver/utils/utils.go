@@ -164,3 +164,27 @@ func WriteIndices(filename string, indices []driver.IndexTable) {
 	log.Println("Indices written")
 	FL.Close()
 }
+func CloseFile(FL *os.File, index []driver.IndexTable, isMaster bool) bool {
+	var headerNext int64
+	if len(index) == 0 {
+		FL.Truncate(0)
+		if isMaster {
+			if !driver.WriteModel(FL, models.User{Deleted: true}, 0) {
+				return false
+			}
+			headerNext = driver.UserSize
+		} else {
+			if !driver.WriteModel(FL, models.Order{Deleted: true}, 0) {
+				return false
+			}
+			headerNext = driver.OrderSize
+		}
+		garbageNode := &models.SHeader{Prev: -1, Pos: 0, Next: headerNext}
+		if !driver.WriteModel(FL, garbageNode, 0) {
+			return false
+		}
+
+	}
+	FL.Close()
+	return true
+}

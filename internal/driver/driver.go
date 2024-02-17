@@ -40,7 +40,7 @@ var IndexSize = int64(binary.Size(IndexTable{}))
 var UserSize = int64(binary.Size(models.User{}))
 var OrderSize = int64(binary.Size(models.Order{}))
 
-const MaxAge = 18
+const MinAge = 17
 
 func ReadModel(file *os.File, model any, position int64) bool {
 	file.Seek(position, io.SeekStart)
@@ -127,7 +127,6 @@ func CreateFileConfig(filename string, isMaster bool) (*FileConfig, error) {
 	fileConfig := NewFileConfig(FL, headerNext, indices, garbageNode)
 	return fileConfig, nil
 }
-
 func LoadIndices(indFile *os.File) ([]IndexTable, error) {
 	readPos := int64(0)
 

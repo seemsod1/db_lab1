@@ -7,6 +7,7 @@ import (
 	"github.com/seemsod1/db_lab1/internal/driver"
 	"github.com/seemsod1/db_lab1/internal/driver/utils"
 	"github.com/spf13/cobra"
+	"log"
 	"os"
 	"strings"
 )
@@ -27,9 +28,13 @@ func run(rootCmd *cobra.Command, reader *bufio.Reader) error {
 			//save slave indexes
 			utils.WriteIndices(driver.SlaveFilename, app.Slave.Ind)
 			//close master file
-			app.Master.FL.Close()
+			if !utils.CloseFile(app.Master.FL, app.Master.Ind, true) {
+				log.Fatal("Error: closing master file")
+			}
 			//close slave file
-			app.Slave.FL.Close()
+			if !utils.CloseFile(app.Slave.FL, app.Slave.Ind, false) {
+				log.Fatal("Error: closing slave file")
+			}
 			fmt.Println("Exiting...")
 			return nil
 		}

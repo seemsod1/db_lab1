@@ -18,6 +18,10 @@ func (r *Repository) GetM(cmd *cobra.Command, args []string) {
 		cmd.Usage()
 		return
 	}
+	if len(r.AppConfig.Master.Ind) == 0 {
+		fmt.Fprintf(os.Stderr, "error: no records found\n")
+		return
+	}
 
 	var userPosToRead int64
 	var all bool
@@ -58,6 +62,11 @@ func (r *Repository) GetS(cmd *cobra.Command, args []string) {
 		cmd.Usage()
 		return
 	}
+	if len(r.AppConfig.Slave.Ind) == 0 {
+		fmt.Fprintf(os.Stderr, "error: no records found\n")
+		return
+	}
+
 	var allUsers bool
 	var allOrders bool
 	var index driver.IndexTable
@@ -130,7 +139,7 @@ func (r *Repository) InsertS(cmd *cobra.Command, args []string) {
 		return
 	}
 	price, err := strconv.Atoi(args[2])
-	if err != nil || price < 1 {
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing <price>: %v\n", err)
 		return
 	}
@@ -197,12 +206,12 @@ func (r *Repository) InsertM(cmd *cobra.Command, args []string) {
 	name := args[1]
 	mail := args[2]
 	age, err := strconv.Atoi(args[3])
-	if err != nil || age < driver.MaxAge {
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing <age>: %v\n", err)
 		return
 	}
-	if age < driver.MaxAge {
-		fmt.Fprintf(os.Stderr, "error: <age> must be greater than %d\n", driver.MaxAge)
+	if age < driver.MinAge {
+		fmt.Fprintf(os.Stderr, "error: <age> must be greater than %d\n", driver.MinAge)
 		return
 	}
 	user := models.User{
@@ -254,12 +263,12 @@ func (r *Repository) UpdateM(cmd *cobra.Command, args []string) {
 			copy(originalUser.Mail[:], mail)
 		}
 		age, err := strconv.Atoi(args[3])
-		if err != nil || age < driver.MaxAge {
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "error parsing <age>: %v\n", err)
 			return
 		}
-		if age < driver.MaxAge {
-			fmt.Fprintf(os.Stderr, "error: <age> must be greater than %d\n", driver.MaxAge)
+		if age < driver.MinAge {
+			fmt.Fprintf(os.Stderr, "error: <age> must be greater than %d\n", driver.MinAge)
 			return
 		}
 		originalUser.Age = uint32(age)
@@ -300,7 +309,7 @@ func (r *Repository) UpdateS(cmd *cobra.Command, args []string) {
 
 		if tmp.RentId == uint32(rentId) {
 			price, err := strconv.Atoi(args[2])
-			if err != nil || price < 1 {
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "error parsing <price>: %v\n", err)
 				return
 			}
@@ -427,7 +436,15 @@ func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
 	var amount uint32
 	if args[0] == "all" {
 		//read all orders from slave file and print them
-		log.Println("Total amount of orders: ", utils.NumberOfRecords(r.AppConfig.Slave.Ind))
+		var tmp models.Order
+		pos := int64(0)
+		for driver.ReadModel(r.AppConfig.Slave.FL, &tmp, pos) {
+			if !tmp.Deleted {
+				amount++
+			}
+			pos += driver.OrderSize
+		}
+		log.Println(fmt.Sprintf("Total amount of orders: %d", amount))
 		return
 
 	} else {
@@ -459,7 +476,7 @@ func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
 			amount++
 			readPos = tmp.Next
 		}
-		log.Println("Total amount of orders: ", amount)
+		log.Println(fmt.Sprintf("User with ID %d has %d orders", userId, amount))
 		return
 	}
 }

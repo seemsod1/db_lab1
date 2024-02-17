@@ -2,7 +2,8 @@ package handlers
 
 import (
 	"fmt"
-	"github.com/seemsod1/db_lab1/internal/helpers"
+	"github.com/seemsod1/db_lab1/internal/driver"
+	"github.com/seemsod1/db_lab1/internal/driver/utils"
 	"github.com/seemsod1/db_lab1/internal/models"
 	"github.com/spf13/cobra"
 	"log"
@@ -34,7 +35,7 @@ func (r *Repository) GetM(cmd *cobra.Command, args []string) {
 			return
 		}
 
-		addressFromIndex, _ := helpers.GetPosition(uint32(id), r.AppConfig.MasterInd)
+		addressFromIndex, _ := utils.GetAddressByIndex(uint32(id), r.AppConfig.Master.Ind)
 		if addressFromIndex == -1 {
 			fmt.Fprintf(os.Stderr, "record with ID %d not found\n", id)
 			return
@@ -48,7 +49,7 @@ func (r *Repository) GetM(cmd *cobra.Command, args []string) {
 		queries = append(queries, strings.ToLower(q))
 	}
 
-	printMasterRecord(r.AppConfig.MasterFL, userPosToRead, queries, all)
+	printMasterRecord(r.AppConfig.Master.FL, r.AppConfig.Master.Ind, userPosToRead, queries, all)
 
 }
 func (r *Repository) GetS(cmd *cobra.Command, args []string) {
@@ -59,7 +60,7 @@ func (r *Repository) GetS(cmd *cobra.Command, args []string) {
 	}
 	var allUsers bool
 	var allOrders bool
-	var index models.IndexTable
+	var index driver.IndexTable
 	var rentId int
 
 	if args[0] == "all" {
@@ -75,7 +76,7 @@ func (r *Repository) GetS(cmd *cobra.Command, args []string) {
 			return
 		}
 
-		orderPos, _ := helpers.GetPosition(uint32(userId), r.AppConfig.SlaveInd)
+		orderPos, _ := utils.GetAddressByIndex(uint32(userId), r.AppConfig.Slave.Ind)
 		if orderPos == -1 {
 			fmt.Fprintf(os.Stderr, "record with ID %d not found\n", userId)
 			return
@@ -105,7 +106,7 @@ func (r *Repository) GetS(cmd *cobra.Command, args []string) {
 		queries = append(queries, strings.ToLower(q))
 	}
 
-	printSlaveRecord(r.AppConfig.SlaveFL, index, uint32(rentId), queries, allUsers, allOrders)
+	printSlaveRecord(r.AppConfig.Slave.FL, index, uint32(rentId), queries, allUsers, allOrders)
 }
 
 func (r *Repository) InsertS(cmd *cobra.Command, args []string) {
@@ -133,6 +134,10 @@ func (r *Repository) InsertS(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "error parsing <price>: %v\n", err)
 		return
 	}
+	if price < 1 {
+		fmt.Fprintf(os.Stderr, "error: <price> must be positive and not equal zero\n")
+		return
+	}
 
 	country := args[3]
 
@@ -146,11 +151,16 @@ func (r *Repository) InsertS(cmd *cobra.Command, args []string) {
 
 	copy(order.Country[:], country)
 
-	index := models.IndexTable{
+	index := driver.IndexTable{
 		UserId: order.UserId,
-		Pos:    r.AppConfig.SlavePos,
+		Pos:    r.AppConfig.Slave.Pos,
 	}
-	pos, _ := helpers.GetPosition(uint32(userId), r.AppConfig.SlaveInd)
+	if _, ind := utils.GetAddressByIndex(uint32(userId), r.AppConfig.Master.Ind); ind == -1 {
+		fmt.Fprintf(os.Stderr, "error: user with ID %d not found\n", userId)
+		return
+	}
+
+	pos, _ := utils.GetAddressByIndex(uint32(userId), r.AppConfig.Slave.Ind)
 	if pos == -1 {
 		OrderInsert(r, order, index)
 
@@ -158,13 +168,13 @@ func (r *Repository) InsertS(cmd *cobra.Command, args []string) {
 
 	}
 	//find last node
-	lastNodePos := helpers.FindLastNode(r.AppConfig.SlaveFL, pos)
+	_, lastNodePos := driver.FindLastNode(r.AppConfig.Slave.FL, pos, &models.Order{})
 	if lastNodePos == -1 {
-		fmt.Println("Unable to find last node")
+		fmt.Fprintf(os.Stderr, "error: last node not found\n")
 		return
 	}
 
-	OrderInsert(r, order, models.IndexTable{Pos: -1}, lastNodePos)
+	OrderInsert(r, order, driver.IndexTable{Pos: -1}, lastNodePos)
 
 }
 func (r *Repository) InsertM(cmd *cobra.Command, args []string) {
@@ -178,17 +188,21 @@ func (r *Repository) InsertM(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	posIn, _ := helpers.GetPosition(uint32(id), r.AppConfig.MasterInd)
+	posIn, _ := utils.GetAddressByIndex(uint32(id), r.AppConfig.Master.Ind)
 	if posIn != -1 {
-		fmt.Println("User already exist")
+		fmt.Fprintf(os.Stderr, "error: user with ID %d already exists\n", id)
 		return
 	}
 
 	name := args[1]
 	mail := args[2]
 	age, err := strconv.Atoi(args[3])
-	if err != nil || age < helpers.MaxAge {
+	if err != nil || age < driver.MaxAge {
 		fmt.Fprintf(os.Stderr, "error parsing <age>: %v\n", err)
+		return
+	}
+	if age < driver.MaxAge {
+		fmt.Fprintf(os.Stderr, "error: <age> must be greater than %d\n", driver.MaxAge)
 		return
 	}
 	user := models.User{
@@ -199,9 +213,9 @@ func (r *Repository) InsertM(cmd *cobra.Command, args []string) {
 	copy(user.Name[:], name)
 	copy(user.Mail[:], mail)
 
-	index := models.IndexTable{
+	index := driver.IndexTable{
 		UserId: user.ID,
-		Pos:    r.AppConfig.MasterPos,
+		Pos:    r.AppConfig.Master.Pos,
 	}
 
 	UserInsert(r, user, index)
@@ -209,11 +223,11 @@ func (r *Repository) InsertM(cmd *cobra.Command, args []string) {
 
 func (r *Repository) UtilM(cmd *cobra.Command, args []string) {
 	//read all users from master file and print them
-	printMasterFile(r.AppConfig.MasterFL)
+	printMasterFile(r.AppConfig.Master.FL)
 }
 func (r *Repository) UtilS(cmd *cobra.Command, args []string) {
 	//read all orders from slave file and print them
-	printSlaveFile(r.AppConfig.SlaveFL)
+	printSlaveFile(r.AppConfig.Slave.FL)
 }
 
 func (r *Repository) UpdateM(cmd *cobra.Command, args []string) {
@@ -223,11 +237,11 @@ func (r *Repository) UpdateM(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	pos, _ := helpers.GetPosition(uint32(id), r.AppConfig.MasterInd)
+	pos, _ := utils.GetAddressByIndex(uint32(id), r.AppConfig.Master.Ind)
 	if pos != -1 {
 		var originalUser models.User
-		if !helpers.ReadModel(r.AppConfig.MasterFL, &originalUser, pos) {
-			fmt.Println("Unable to update user. Error: read failed")
+		if !driver.ReadModel(r.AppConfig.Master.FL, &originalUser, pos) {
+			fmt.Fprintf(os.Stderr, "error: unable to update user with ID %d\n", id)
 			return
 		}
 
@@ -240,19 +254,23 @@ func (r *Repository) UpdateM(cmd *cobra.Command, args []string) {
 			copy(originalUser.Mail[:], mail)
 		}
 		age, err := strconv.Atoi(args[3])
-		if err != nil || age < helpers.MaxAge {
+		if err != nil || age < driver.MaxAge {
 			fmt.Fprintf(os.Stderr, "error parsing <age>: %v\n", err)
+			return
+		}
+		if age < driver.MaxAge {
+			fmt.Fprintf(os.Stderr, "error: <age> must be greater than %d\n", driver.MaxAge)
 			return
 		}
 		originalUser.Age = uint32(age)
 
-		if helpers.WriteModel(r.AppConfig.MasterFL, &originalUser, pos) {
+		if driver.WriteModel(r.AppConfig.Master.FL, &originalUser, pos) {
 			log.Print("User updated")
 			return
 		}
 	}
 
-	fmt.Println("User not found")
+	fmt.Fprintf(os.Stderr, "error: user with ID %d not found\n", id)
 }
 func (r *Repository) UpdateS(cmd *cobra.Command, args []string) {
 	userId, err := strconv.Atoi(args[0])
@@ -267,16 +285,16 @@ func (r *Repository) UpdateS(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	pos, _ := helpers.GetPosition(uint32(userId), r.AppConfig.SlaveInd)
+	pos, _ := utils.GetAddressByIndex(uint32(userId), r.AppConfig.Slave.Ind)
 	if pos == -1 {
-		fmt.Println("No orders found for this user")
+		fmt.Fprintf(os.Stderr, "error: user with ID %d has no orders\n", userId)
 		return
 	}
 	readPos := pos
 	var tmp models.Order
 	for readPos != -1 {
-		if !helpers.ReadModel(r.AppConfig.SlaveFL, &tmp, readPos) {
-			fmt.Println("Unable to update next_ptr. Error: read failed")
+		if !driver.ReadModel(r.AppConfig.Slave.FL, &tmp, readPos) {
+			fmt.Fprintf(os.Stderr, "error: unable to update order\n")
 			return
 		}
 
@@ -286,19 +304,23 @@ func (r *Repository) UpdateS(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(os.Stderr, "error parsing <price>: %v\n", err)
 				return
 			}
+			if price < 1 {
+				fmt.Fprintf(os.Stderr, "error: <price> must be positive and not equal zero\n")
+				return
+			}
 			tmp.Price = uint32(price)
 
 			country := args[3]
 
 			copy(tmp.Country[:], country)
-			if helpers.WriteModel(r.AppConfig.SlaveFL, &tmp, readPos) {
+			if driver.WriteModel(r.AppConfig.Slave.FL, &tmp, readPos) {
 				log.Print("Order updated")
 				return
 			}
 		}
 		readPos = tmp.Next
 	}
-	fmt.Println("Rent not found")
+	fmt.Fprintf(os.Stderr, "error: order not found\n")
 }
 
 func (r *Repository) DeleteS(cmd *cobra.Command, args []string) {
@@ -313,17 +335,17 @@ func (r *Repository) DeleteS(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	pos, index := helpers.GetPosition(uint32(userId), r.AppConfig.SlaveInd)
+	pos, index := utils.GetAddressByIndex(uint32(userId), r.AppConfig.Slave.Ind)
 	if pos == -1 {
-		fmt.Println("User has no orders")
+		fmt.Fprintf(os.Stderr, "error: user with ID %d has no orders\n", userId)
 		return
 	}
 	readPos := pos
 	var tmp models.Order
 	var prevPos int64
 	for readPos != -1 {
-		if !helpers.ReadModel(r.AppConfig.SlaveFL, &tmp, readPos) {
-			fmt.Println("Failed to delete order from file")
+		if !driver.ReadModel(r.AppConfig.Slave.FL, &tmp, readPos) {
+			fmt.Fprintf(os.Stderr, "error: unable to delete order\n")
 			return
 		}
 
@@ -334,14 +356,14 @@ func (r *Repository) DeleteS(cmd *cobra.Command, args []string) {
 					OrderDelete(r, readPos, prevPos)
 
 					//change in index table
-					r.AppConfig.SlaveInd = append(r.AppConfig.SlaveInd[:index], r.AppConfig.SlaveInd[index+1:]...)
+					r.AppConfig.Slave.Ind = append(r.AppConfig.Slave.Ind[:index], r.AppConfig.Slave.Ind[index+1:]...)
 					return
 				}
 				//first node in linked list
 				OrderDelete(r, readPos, prevPos)
 
 				//change in index table
-				r.AppConfig.SlaveInd[index].Pos = tmp.Next
+				r.AppConfig.Slave.Ind[index].Pos = tmp.Next
 				return
 			}
 			//middle or last node in linked list
@@ -354,7 +376,7 @@ func (r *Repository) DeleteS(cmd *cobra.Command, args []string) {
 		readPos = tmp.Next
 	}
 
-	fmt.Println("Order not found")
+	fmt.Fprintf(os.Stderr, "error: order not found\n")
 
 }
 func (r *Repository) DeleteM(cmd *cobra.Command, args []string) {
@@ -364,14 +386,14 @@ func (r *Repository) DeleteM(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	userPos, index := helpers.GetPosition(uint32(id), r.AppConfig.MasterInd)
-	headPos, orderIndex := helpers.GetPosition(uint32(id), r.AppConfig.SlaveInd)
+	userPos, index := utils.GetAddressByIndex(uint32(id), r.AppConfig.Master.Ind)
+	headPos, orderIndex := utils.GetAddressByIndex(uint32(id), r.AppConfig.Slave.Ind)
 
 	if userPos != -1 {
 		var user models.User
-		if !helpers.ReadModel(r.AppConfig.MasterFL, &user, userPos) {
+		if !driver.ReadModel(r.AppConfig.Master.FL, &user, userPos) {
 			//error handling
-			fmt.Println("Unable to delete user. Error: read failed")
+			fmt.Fprintf(os.Stderr, "error: unable to delete user with ID %d\n", id)
 			return
 		}
 
@@ -379,8 +401,8 @@ func (r *Repository) DeleteM(cmd *cobra.Command, args []string) {
 		readPos := headPos
 		var tmp models.Order
 		for readPos != -1 {
-			if !helpers.ReadModel(r.AppConfig.SlaveFL, &tmp, readPos) {
-				fmt.Println("Unable to delete user. Error: read failed")
+			if !driver.ReadModel(r.AppConfig.Slave.FL, &tmp, readPos) {
+				fmt.Fprintf(os.Stderr, "error: unable to delete user's order \n")
 				return
 			}
 			OrderDelete(r, readPos, 0)
@@ -390,22 +412,22 @@ func (r *Repository) DeleteM(cmd *cobra.Command, args []string) {
 		UserDelete(r, userPos)
 		//change in index table
 		if headPos != -1 {
-			r.AppConfig.SlaveInd = append(r.AppConfig.SlaveInd[:orderIndex], r.AppConfig.SlaveInd[orderIndex+1:]...)
+			r.AppConfig.Slave.Ind = append(r.AppConfig.Slave.Ind[:orderIndex], r.AppConfig.Slave.Ind[orderIndex+1:]...)
 		}
 
-		r.AppConfig.MasterInd = append(r.AppConfig.MasterInd[:index], r.AppConfig.MasterInd[index+1:]...)
+		r.AppConfig.Master.Ind = append(r.AppConfig.Master.Ind[:index], r.AppConfig.Master.Ind[index+1:]...)
 		return
 
 	}
 
-	fmt.Println("User not found")
+	fmt.Fprintf(os.Stderr, "error: user with ID %d not found\n", id)
 }
 
 func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
 	var amount uint32
 	if args[0] == "all" {
 		//read all orders from slave file and print them
-		log.Println("Total amount of orders: ", helpers.NumberOfRecords(r.AppConfig.SlaveInd))
+		log.Println("Total amount of orders: ", utils.NumberOfRecords(r.AppConfig.Slave.Ind))
 		return
 
 	} else {
@@ -422,16 +444,16 @@ func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
 		}
 		userId := uint32(userIdArgs)
 
-		pos, _ := helpers.GetPosition(userId, r.AppConfig.SlaveInd)
+		pos, _ := utils.GetAddressByIndex(userId, r.AppConfig.Slave.Ind)
 		if pos == -1 {
-			log.Println("No user found")
+			fmt.Fprintf(os.Stderr, "error: user with ID %d has no orders\n", userId)
 			return
 		}
 		readPos := pos
 		var tmp models.Order
 		for readPos != -1 {
-			if !helpers.ReadModel(r.AppConfig.SlaveFL, &tmp, readPos) {
-				fmt.Println("Calculation failed.Error: read failed")
+			if !driver.ReadModel(r.AppConfig.Slave.FL, &tmp, readPos) {
+				fmt.Fprintf(os.Stderr, "error: unable to calculate amount of orders\n")
 				return
 			}
 			amount++
@@ -442,5 +464,5 @@ func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
 	}
 }
 func (r *Repository) CalcM(cmd *cobra.Command, args []string) {
-	log.Println("Total amount of users: ", helpers.NumberOfRecords(r.AppConfig.MasterInd))
+	log.Println("Total amount of users: ", utils.NumberOfRecords(r.AppConfig.Master.Ind))
 }

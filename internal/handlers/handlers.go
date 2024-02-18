@@ -177,7 +177,7 @@ func (r *Repository) InsertS(cmd *cobra.Command, args []string) {
 
 	}
 	//find last node
-	_, lastNodePos := driver.FindLastNode(r.AppConfig.Slave.FL, pos, &models.Order{})
+	lastNodePos := driver.FindLastNode(r.AppConfig.Slave.FL, pos, &models.Order{})
 	if lastNodePos == -1 {
 		fmt.Fprintf(os.Stderr, "error: last node not found\n")
 		return
@@ -435,7 +435,7 @@ func (r *Repository) DeleteM(cmd *cobra.Command, args []string) {
 func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
 	var amount uint32
 	if args[0] == "all" {
-		//read all orders from slave file and print them
+		//read all orders from slave file
 		var tmp models.Order
 		pos := int64(0)
 		for driver.ReadModel(r.AppConfig.Slave.FL, &tmp, pos) {

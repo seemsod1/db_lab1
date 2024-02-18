@@ -20,8 +20,6 @@ type FileConfig struct {
 	Pos         int64
 	Ind         []IndexTable
 	GarbageNode *models.SHeader
-	Size        int
-	IndSize     int
 }
 
 func NewFileConfig(file *os.File, pos int64, ind []IndexTable, garbageNode *models.SHeader) *FileConfig {
@@ -89,7 +87,7 @@ func CreateFileConfig(filename string, isMaster bool) (*FileConfig, error) {
 				}
 				headerNext = OrderSize
 			}
-			garbageNode = &models.SHeader{Prev: -1, Pos: 0, Next: headerNext}
+			garbageNode = &models.SHeader{Prev: -1, Pos: 0, Next: -1}
 			if !WriteModel(FL, garbageNode, 0) {
 				return nil, err
 			}
@@ -110,12 +108,16 @@ func CreateFileConfig(filename string, isMaster bool) (*FileConfig, error) {
 		if err != nil {
 			return nil, err
 		}
-		posInFile, prev := FindLastNode(FL, 0, &models.SHeader{})
-		if prev == -1 {
-			return nil, err
+		var posInFile int64
+		if isMaster {
+			posInFile = FindFilePos(FL, &models.User{})
+		} else {
+			posInFile = FindFilePos(FL, &models.Order{})
 		}
+
 		var gab models.SHeader
-		if !ReadModel(FL, &gab, prev) {
+		gabPos := FindLastNode(FL, 0, &gab)
+		if !ReadModel(FL, &gab, gabPos) {
 			return nil, err
 		}
 		garbageNode = &gab

@@ -1,36 +1,41 @@
 package driver
 
 import (
+	"encoding/binary"
 	"github.com/seemsod1/db_lab1/internal/models"
-	"log"
 	"os"
 )
 
-func FindLastNode(file *os.File, recordPos int64, model interface{}) (int64, int64) {
-	var prevPos int64 = -1
-	var lastPos = recordPos
+func FindLastNode(file *os.File, recordPos int64, model interface{}) int64 {
+	var tmp int64
 
-	for lastPos != -1 {
-		if !ReadModel(file, model, lastPos) {
-			return lastPos, prevPos
+	for {
+		if !ReadModel(file, model, recordPos) {
+			return -1
 		}
-
-		switch model := model.(type) {
-		case *models.Order:
-			prevPos = lastPos
-			lastPos = model.Next
+		switch modelTmp := model.(type) {
 		case *models.SHeader:
-			prevPos = lastPos
-			lastPos = model.Next
+			tmp = modelTmp.Next
+		case *models.Order:
+			tmp = modelTmp.Next
 		default:
-			log.Println("Unsupported model type")
-			return -1, -1
+			return -1
 		}
-
-		if lastPos == -1 {
+		if tmp == -1 {
 			break
 		}
+		recordPos = tmp
 	}
+	return recordPos
+}
 
-	return lastPos, prevPos
+func FindFilePos(file *os.File, model interface{}) int64 {
+	var pos int64 = 0
+	for {
+		if !ReadModel(file, model, pos) {
+			break
+		}
+		pos += int64(binary.Size(model))
+	}
+	return pos
 }

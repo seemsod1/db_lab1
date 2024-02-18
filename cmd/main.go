@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"github.com/seemsod1/db_lab1/internal/config"
 	"github.com/seemsod1/db_lab1/internal/driver"
+	"github.com/seemsod1/db_lab1/internal/driver/utils"
 	"github.com/seemsod1/db_lab1/internal/handlers"
 	"log"
 	"os"
@@ -41,4 +42,16 @@ func main() {
 		log.Fatal(err)
 	}
 
+	//save master indexes
+	utils.WriteIndices(driver.MasterFilename, app.Master.Ind)
+	//save slave indexes
+	utils.WriteIndices(driver.SlaveFilename, app.Slave.Ind)
+	//close master file
+	if !utils.CloseFile(app.Master, true) {
+		log.Fatal("Error: closing master file")
+	}
+	//close slave file
+	if !utils.CloseFile(app.Slave, false) {
+		log.Fatal("Error: closing slave file")
+	}
 }

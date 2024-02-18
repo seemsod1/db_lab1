@@ -21,7 +21,7 @@ func OrderDelete(r *Repository, readPos int64, prev int64) {
 	if !utils.DeleteOrderNode(r.AppConfig.Slave.FL, readPos, prev) {
 		log.Fatal("Unable to delete order")
 	}
-	if !utils.AddGarbageNode(r.AppConfig.Slave.FL, r.AppConfig.Slave.GarbageNode, readPos, models.Order{Deleted: true}, r.AppConfig.Slave.Pos) {
+	if !utils.AddGarbageNode(r.AppConfig.Slave.FL, r.AppConfig.Slave.GarbageNode, readPos, models.Order{Deleted: true}) {
 		log.Fatal("Unable to delete order")
 	}
 	log.Print("Order deleted")
@@ -30,7 +30,7 @@ func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, pre
 	var pos int64
 
 	if r.AppConfig.Slave.GarbageNode.Prev == -1 {
-		pos = r.AppConfig.Slave.GarbageNode.Next
+		pos = r.AppConfig.Slave.Pos
 	} else {
 		pos = r.AppConfig.Slave.GarbageNode.Pos
 	}
@@ -52,7 +52,7 @@ func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, pre
 	if r.AppConfig.Slave.GarbageNode.Prev == -1 {
 		r.AppConfig.Slave.Pos += driver.OrderSize
 	}
-	r.AppConfig.Slave.GarbageNode = utils.DeleteGarbageNode(r.AppConfig.Slave.FL, r.AppConfig.Slave.GarbageNode, r.AppConfig.Slave.GarbageNode.Prev, r.AppConfig.Slave.Pos)
+	r.AppConfig.Slave.GarbageNode = utils.DeleteGarbageNode(r.AppConfig.Slave)
 	if r.AppConfig.Slave.GarbageNode == nil {
 		log.Fatal("Unable to insert order")
 	}
@@ -60,7 +60,7 @@ func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, pre
 }
 
 func UserDelete(r *Repository, readPos int64) {
-	if !utils.AddGarbageNode(r.AppConfig.Master.FL, r.AppConfig.Master.GarbageNode, readPos, models.User{Deleted: true}, r.AppConfig.Master.Pos) {
+	if !utils.AddGarbageNode(r.AppConfig.Master.FL, r.AppConfig.Master.GarbageNode, readPos, models.User{Deleted: true}) {
 		log.Fatal("Unable to delete user")
 	}
 	log.Print("User deleted")
@@ -68,7 +68,7 @@ func UserDelete(r *Repository, readPos int64) {
 func UserInsert(r *Repository, user models.User, index driver.IndexTable) {
 	var pos int64
 	if r.AppConfig.Master.GarbageNode.Prev == -1 {
-		pos = r.AppConfig.Master.GarbageNode.Next
+		pos = r.AppConfig.Master.Pos
 	} else {
 		pos = r.AppConfig.Master.GarbageNode.Pos
 		index.Pos = pos
@@ -82,7 +82,7 @@ func UserInsert(r *Repository, user models.User, index driver.IndexTable) {
 	if r.AppConfig.Master.GarbageNode.Prev == -1 {
 		r.AppConfig.Master.Pos += driver.UserSize
 	}
-	r.AppConfig.Master.GarbageNode = utils.DeleteGarbageNode(r.AppConfig.Master.FL, r.AppConfig.Master.GarbageNode, r.AppConfig.Master.GarbageNode.Prev, r.AppConfig.Master.Pos)
+	r.AppConfig.Master.GarbageNode = utils.DeleteGarbageNode(r.AppConfig.Master)
 	if r.AppConfig.Master.GarbageNode == nil {
 		log.Fatal("Unable to insert user")
 	}

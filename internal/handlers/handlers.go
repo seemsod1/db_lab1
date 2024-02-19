@@ -425,16 +425,16 @@ func (r *Repository) DeleteS(_ *cobra.Command, args []string) {
 	}
 	if user.FirstOrder == orderPos {
 		if order.Next == -1 {
-			utils.ChangeMasterFirstOrder(r.AppConfig.Master.FL, userPos, prevPos)
+			changeMasterFirstOrder(r.AppConfig.Master.FL, userPos, prevPos)
 		} else {
-			utils.ChangeMasterFirstOrder(r.AppConfig.Master.FL, userPos, order.Next)
+			changeMasterFirstOrder(r.AppConfig.Master.FL, userPos, order.Next)
 		}
 		OrderDelete(r, readPos, prevPos)
 	} else {
 		prevPos = utils.FindPrevNode(r.AppConfig.Slave.FL, user.FirstOrder, orderPos, &models.Order{})
 		OrderDelete(r, readPos, prevPos)
 	}
-	r.AppConfig.Slave.Ind = utils.RemoveById(orderIndex, r.AppConfig.Slave.Ind)
+	r.AppConfig.Slave.Ind = removeById(orderIndex, r.AppConfig.Slave.Ind)
 
 }
 func (r *Repository) DeleteM(_ *cobra.Command, args []string) {
@@ -465,12 +465,12 @@ func (r *Repository) DeleteM(_ *cobra.Command, args []string) {
 			}
 			OrderDelete(r, readPos, 0)
 			orderIndex := utils.GetIdByAddress(readPos, r.AppConfig.Slave.Ind)
-			r.AppConfig.Slave.Ind = utils.RemoveById(orderIndex, r.AppConfig.Slave.Ind)
+			r.AppConfig.Slave.Ind = removeById(orderIndex, r.AppConfig.Slave.Ind)
 			readPos = tmp.Next
 		}
 
 		UserDelete(r, userPos)
-		r.AppConfig.Master.Ind = utils.RemoveById(index, r.AppConfig.Master.Ind)
+		r.AppConfig.Master.Ind = removeById(index, r.AppConfig.Master.Ind)
 		//change in index table
 		return
 
@@ -483,7 +483,7 @@ func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
 	var amount int
 	if args[0] == "all" {
 		//read all orders from slave file
-		log.Println(fmt.Sprintf("Total amount of orders: %d", utils.NumberOfRecords(r.AppConfig.Slave.Ind)))
+		log.Println(fmt.Sprintf("Total amount of orders: %d", numberOfRecords(r.AppConfig.Slave.Ind)))
 		return
 
 	} else {
@@ -509,12 +509,12 @@ func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "error: unable to calculate amount of orders\n")
 			return
 		}
-		amount = utils.NumberOfSubrecords(r.AppConfig.Slave.FL, user.FirstOrder)
+		amount = numberOfSubrecords(r.AppConfig.Slave.FL, user.FirstOrder)
 
 		log.Println(fmt.Sprintf("User with ID %d has %d orders", userId, amount))
 		return
 	}
 }
 func (r *Repository) CalcM(_ *cobra.Command, _ []string) {
-	log.Println("Total amount of users: ", utils.NumberOfRecords(r.AppConfig.Master.Ind))
+	log.Println("Total amount of users: ", numberOfRecords(r.AppConfig.Master.Ind))
 }

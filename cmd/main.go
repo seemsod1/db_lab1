@@ -45,22 +45,22 @@ func main() {
 	}
 
 	//close master file
-	err = utils.CloseFile(app.Master, true)
+	app.Master, err = utils.CloseFile(app.Master, true)
 	if errors.Is(err, &myErr.Error{Err: myErr.FailedToOptimize}) {
-		log.Fatal("Error: failed to optimize")
+		log.Fatal("Error: failed to optimize master file")
 	} else if errors.Is(err, &myErr.Error{Err: myErr.AlreadyOptimized}) {
-		log.Println("Already optimized")
+		log.Println("Master file already optimized")
 	} else {
-		log.Println("Master file closed and optimized")
+		log.Println("Master file closed")
 	}
 	//close slave file
-	err = utils.CloseFile(app.Slave, false)
+	app.Slave, err = utils.CloseFile(app.Slave, false)
 	if errors.Is(err, &myErr.Error{Err: myErr.FailedToOptimize}) {
-		log.Fatal("Error: failed to optimize")
+		log.Fatal("Error: failed to optimize slave file")
 	} else if errors.Is(err, &myErr.Error{Err: myErr.AlreadyOptimized}) {
-		log.Println("Already optimized")
+		log.Println("Slave file already optimized")
 	} else {
-		log.Println("Slave file closed and optimized")
+		log.Println("Slave file closed")
 	}
 	//save master indexes
 	utils.WriteIndices(driver.MasterFilename, app.Master.Ind)

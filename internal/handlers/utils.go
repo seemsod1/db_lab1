@@ -44,7 +44,7 @@ func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, use
 			log.Fatal("Unable to insert order")
 		}
 
-		utils.ChangeMasterFirstOrder(r.AppConfig.Master.FL, userPos, pos)
+		changeMasterFirstOrder(r.AppConfig.Master.FL, userPos, pos)
 	} else {
 		if !utils.AddNode(order, r.AppConfig.Slave.FL, pos, prev[0]) {
 			log.Fatal("Unable to insert order")
@@ -325,4 +325,43 @@ func printSlaveRecord(flFile *os.File, indexTable []driver.IndexTable, orderID i
 	}
 
 	t.Render()
+}
+
+func changeMasterFirstOrder(masterFile *os.File, userPos int64, firstOrder int64) {
+	var user models.User
+	if !driver.ReadModel(masterFile, &user, userPos) {
+		log.Fatal("Unable to change first order")
+	}
+	user.FirstOrder = firstOrder
+	if !driver.WriteModel(masterFile, &user, userPos) {
+		log.Fatal("Unable to change first order")
+	}
+}
+func numberOfSubrecords(flFile *os.File, firstSlaveAddress int64) int {
+	count := 0
+	nextAddress := firstSlaveAddress
+
+	for nextAddress != -1 {
+		var slave models.Order
+		if !driver.ReadModel(flFile, &slave, nextAddress) {
+			fmt.Printf("error reading slave model\n")
+			break
+		}
+		nextAddress = slave.Next
+		count++
+	}
+
+	return count
+}
+func removeById(id uint32, indices []driver.IndexTable) []driver.IndexTable {
+	for i, v := range indices {
+		if v.Id == id {
+			indices = append(indices[:i], indices[i+1:]...)
+			break
+		}
+	}
+	return indices
+}
+func numberOfRecords(indices []driver.IndexTable) int {
+	return len(indices)
 }

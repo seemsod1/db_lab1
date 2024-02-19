@@ -16,8 +16,10 @@ func AddNode(record models.Order, file *os.File, pos int64, prevRecordPos ...int
 	var prev int64
 	if len(prevRecordPos) == 0 {
 		prev = -1
+		record.Prev = -1
 	} else {
 		prev = prevRecordPos[0]
+		record.Prev = prev
 	}
 	if !driver.WriteModel(file, record, pos) {
 		log.Println("Error: write failed")
@@ -52,14 +54,48 @@ func DeleteOrderNode(file *os.File, recordPos int64, prevRecordPos int64) bool {
 		log.Println("Error: read failed")
 		return false
 	}
-
+	//check if it's first node
 	if prevRecordPos == -1 {
+		//check if only one node
+		if tmp.Next != -1 {
+			var next models.Order
+			if !driver.ReadModel(file, &next, tmp.Next) {
+				log.Println("Error: read failed")
+				return false
+			}
+			next.Prev = -1
+			if !driver.WriteModel(file, next, tmp.Next) {
+				log.Println("Error: write failed")
+				return false
+			}
+		}
+		//delete node
 		tmp.Deleted = true
 		if !driver.WriteModel(file, tmp, recordPos) {
 			log.Println("Error: write failed")
 			return false
 		}
 
+		return true
+	}
+	if tmp.Next == -1 {
+		//delete node
+		tmp.Deleted = true
+		if !driver.WriteModel(file, tmp, recordPos) {
+			log.Println("Error: write failed")
+			return false
+		}
+		//set previous node's next pointer to -1
+		var prev models.Order
+		if !driver.ReadModel(file, &prev, prevRecordPos) {
+			log.Println("Error: read failed")
+			return false
+		}
+		prev.Next = -1
+		if !driver.WriteModel(file, prev, prevRecordPos) {
+			log.Println("Error: write failed")
+			return false
+		}
 		return true
 	}
 
@@ -79,6 +115,18 @@ func DeleteOrderNode(file *os.File, recordPos int64, prevRecordPos int64) bool {
 		log.Println("Error: write failed")
 		return false
 	}
+
+	var next models.Order
+	if !driver.ReadModel(file, &next, tmp.Next) {
+		log.Println("Error: read failed")
+		return false
+	}
+	next.Prev = prevRecordPos
+	if !driver.WriteModel(file, next, tmp.Next) {
+		log.Println("Error: write failed")
+		return false
+	}
+
 	return true
 }
 
@@ -97,34 +145,6 @@ func GetIdByAddress(pos int64, ind []driver.IndexTable) uint32 {
 		}
 	}
 	return 0
-}
-
-func FindPrevNode(file *os.File, headPos int64, recordPos int64, model interface{}) int64 {
-	var prev int64
-	for headPos != -1 {
-		if !driver.ReadModel(file, model, headPos) {
-			return -1
-		}
-		switch model := model.(type) {
-		case *models.Order:
-			if model.Next == recordPos {
-				return headPos
-			}
-			prev = headPos
-			headPos = model.Next
-		case *models.SHeader:
-			if model.Next == recordPos {
-				return headPos
-			}
-			prev = headPos
-			headPos = model.Next
-		default:
-			log.Println("Unsupported model type")
-			return -1
-		}
-	}
-	return prev
-
 }
 func FindLastNode(file *os.File, recordPos int64, model interface{}) int64 {
 	var tmp int64

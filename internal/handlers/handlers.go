@@ -171,6 +171,7 @@ func (r *Repository) InsertS(_ *cobra.Command, args []string) {
 		UserId:  uint32(userId),
 		Price:   uint32(price),
 		Next:    -1,
+		Prev:    -1,
 		Deleted: false,
 	}
 
@@ -204,7 +205,7 @@ func (r *Repository) InsertS(_ *cobra.Command, args []string) {
 	pos = user.FirstOrder
 
 	if user.FirstOrder == -1 {
-		OrderInsert(r, order, index, user.ID, true)
+		orderInsert(r, order, index, user.ID, true)
 		return
 
 	}
@@ -215,7 +216,7 @@ func (r *Repository) InsertS(_ *cobra.Command, args []string) {
 		return
 	}
 
-	OrderInsert(r, order, index, user.ID, false, lastNodePos)
+	orderInsert(r, order, index, user.ID, false, lastNodePos)
 
 }
 func (r *Repository) InsertM(cmd *cobra.Command, args []string) {
@@ -264,7 +265,7 @@ func (r *Repository) InsertM(cmd *cobra.Command, args []string) {
 		Pos: r.AppConfig.Master.Pos,
 	}
 
-	UserInsert(r, user, index)
+	userInsert(r, user, index)
 }
 
 func (r *Repository) UtilM(_ *cobra.Command, _ []string) {
@@ -429,10 +430,10 @@ func (r *Repository) DeleteS(_ *cobra.Command, args []string) {
 		} else {
 			changeMasterFirstOrder(r.AppConfig.Master.FL, userPos, order.Next)
 		}
-		OrderDelete(r, readPos, prevPos)
+		orderDelete(r, readPos, prevPos)
 	} else {
-		prevPos = utils.FindPrevNode(r.AppConfig.Slave.FL, user.FirstOrder, orderPos, &models.Order{})
-		OrderDelete(r, readPos, prevPos)
+		//prevPos = utils.FindPrevNode(r.AppConfig.Slave.FL, user.FirstOrder, orderPos, &models.Order{})
+		orderDelete(r, readPos, order.Prev)
 	}
 	r.AppConfig.Slave.Ind = removeById(orderIndex, r.AppConfig.Slave.Ind)
 
@@ -463,13 +464,13 @@ func (r *Repository) DeleteM(_ *cobra.Command, args []string) {
 				fmt.Fprintf(os.Stderr, "error: unable to delete user's order \n")
 				return
 			}
-			OrderDelete(r, readPos, 0)
+			orderDelete(r, readPos, -1)
 			orderIndex := utils.GetIdByAddress(readPos, r.AppConfig.Slave.Ind)
 			r.AppConfig.Slave.Ind = removeById(orderIndex, r.AppConfig.Slave.Ind)
 			readPos = tmp.Next
 		}
 
-		UserDelete(r, userPos)
+		userDelete(r, userPos)
 		r.AppConfig.Master.Ind = removeById(index, r.AppConfig.Master.Ind)
 		//change in index table
 		return

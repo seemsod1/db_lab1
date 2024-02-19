@@ -11,6 +11,7 @@ type Order struct {
 	UserId  uint32
 	Price   uint32
 	Country [10]byte
+	Prev    int64
 	Next    int64
 	Deleted bool
 }

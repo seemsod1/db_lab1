@@ -14,10 +14,10 @@ import (
 	"strings"
 )
 
-func OrderDelete(r *Repository, readPos int64, prev int64) {
-	if prev == 0 {
-		prev = -1
-	}
+func orderDelete(r *Repository, readPos int64, prev int64) {
+	//if prev == 0 {
+	//	prev = -1
+	//}
 	if !utils.DeleteOrderNode(r.AppConfig.Slave.FL, readPos, prev) {
 		log.Fatal("Unable to delete order")
 	}
@@ -26,7 +26,7 @@ func OrderDelete(r *Repository, readPos int64, prev int64) {
 	}
 	log.Print("Order deleted")
 }
-func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, userId uint32, First bool, prev ...int64) {
+func orderInsert(r *Repository, order models.Order, index driver.IndexTable, userId uint32, First bool, prev ...int64) {
 	var pos int64
 
 	if r.AppConfig.Slave.GarbageNode.Prev == -1 {
@@ -64,13 +64,13 @@ func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, use
 	log.Print("Order inserted")
 }
 
-func UserDelete(r *Repository, readPos int64) {
+func userDelete(r *Repository, readPos int64) {
 	if !utils.AddGarbageNode(r.AppConfig.Master.FL, r.AppConfig.Master.GarbageNode, readPos, models.User{Deleted: true}) {
 		log.Fatal("Unable to delete user")
 	}
 	log.Print("User deleted")
 }
-func UserInsert(r *Repository, user models.User, index driver.IndexTable) {
+func userInsert(r *Repository, user models.User, index driver.IndexTable) {
 	var pos int64
 	if r.AppConfig.Master.GarbageNode.Prev == -1 {
 		pos = r.AppConfig.Master.Pos
@@ -124,7 +124,7 @@ func printSlaveFile(file *os.File) {
 	t := table.NewWriter()
 	t.SetStyle(table.StyleLight)
 	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"Order_id", "User_id", "Price", "Country", "Deleted", "Next"})
+	t.AppendHeader(table.Row{"Order_id", "User_id", "Price", "Country", "Deleted", "Prev", "Next"})
 	var order models.Order
 	var garbage models.SHeader
 	readPos := int64(0)
@@ -134,9 +134,9 @@ func printSlaveFile(file *os.File) {
 			if !driver.ReadModel(file, &garbage, readPos) {
 				log.Fatal("Failed to print slave file")
 			}
-			t.AppendRow([]interface{}{garbage.Prev, garbage.Pos, garbage.Next, "", true, "", "Garbage", driver.OrderSize})
+			t.AppendRow([]interface{}{garbage.Prev, garbage.Pos, garbage.Next, "", true, "", "", "Garbage", driver.OrderSize})
 		} else {
-			t.AppendRow([]interface{}{order.OrderId, order.UserId, order.Price, utils.ByteArrayToString(order.Country[:]), order.Deleted, order.Next, "Order", binary.Size(order)})
+			t.AppendRow([]interface{}{order.OrderId, order.UserId, order.Price, utils.ByteArrayToString(order.Country[:]), order.Deleted, order.Prev, order.Next, "Order", binary.Size(order)})
 		}
 		readPos += driver.OrderSize
 	}

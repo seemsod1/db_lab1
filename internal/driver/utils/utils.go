@@ -263,53 +263,56 @@ func SortIndicesByPos(indices []driver.IndexTable) []driver.IndexTable {
 
 }
 
-func CloseFile(fileConfig *driver.FileConfig, isMaster bool) (*driver.FileConfig, error) {
-	if len(fileConfig.Ind) == 0 {
-		if err := fileConfig.FL.Truncate(0); err != nil {
+func CloseFile(firstConfig *driver.FileConfig, addConfig *driver.FileConfig, isMaster bool) (*driver.FileConfig, error) {
+	if len(firstConfig.Ind) == 0 {
+		if err := firstConfig.FL.Truncate(0); err != nil {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 		}
 		if isMaster {
-			if !driver.WriteModel(fileConfig.FL, models.User{Deleted: true}, 0) {
+			if !driver.WriteModel(firstConfig.FL, models.User{Deleted: true}, 0) {
 				return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 			}
 		} else {
-			if !driver.WriteModel(fileConfig.FL, models.Order{Deleted: true}, 0) {
+			if !driver.WriteModel(firstConfig.FL, models.Order{Deleted: true}, 0) {
 				return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 			}
 		}
 		garbageNode := &models.SHeader{Prev: -1, Pos: 0, Next: -1}
-		if !driver.WriteModel(fileConfig.FL, garbageNode, 0) {
+		if !driver.WriteModel(firstConfig.FL, garbageNode, 0) {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 		}
 
-		if err := fileConfig.FL.Close(); err != nil {
+		if err := firstConfig.FL.Close(); err != nil {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 		}
 
-		return fileConfig, nil
+		return firstConfig, nil
 	}
 	log.Println("Optimizing file began")
 	var err error
-	fileConfig, err = optimizeFile(fileConfig, isMaster)
+	firstConfig, err = optimizeFile(firstConfig, addConfig, isMaster)
 	if errors.Is(err, &myErr.Error{Err: myErr.AlreadyOptimized}) {
-		if err = fileConfig.FL.Close(); err != nil {
+		if err := firstConfig.FL.Close(); err != nil {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 		}
 		return nil, &myErr.Error{Err: myErr.AlreadyOptimized}
 	} else if errors.Is(err, &myErr.Error{Err: myErr.FailedToOptimize}) {
-		if err = fileConfig.FL.Close(); err != nil {
+		if err := firstConfig.FL.Close(); err != nil {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 		}
 		return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 	}
-	if err = fileConfig.FL.Close(); err != nil {
+	if err := firstConfig.FL.Close(); err != nil {
+		if err := firstConfig.FL.Close(); err != nil {
+			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+		}
 		return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 	}
 
-	return fileConfig, nil
+	return firstConfig, nil
 
 }
-func optimizeFile(fileConfig *driver.FileConfig, isMaster bool) (*driver.FileConfig, error) {
+func optimizeFile(fileConfig *driver.FileConfig, addConfig *driver.FileConfig, isMaster bool) (*driver.FileConfig, error) {
 	gabList := createGarbageIndexTable(fileConfig.FL, 0)
 	if gabList == nil || len(gabList) < 2 {
 		return fileConfig, &myErr.Error{Err: myErr.AlreadyOptimized}
@@ -334,7 +337,7 @@ func optimizeFile(fileConfig *driver.FileConfig, isMaster bool) (*driver.FileCon
 		trSize = driver.OrderSize
 	}
 	//delete records which are after last user
-	log.Println("Cutting garbage below last user")
+	log.Println("Cutting garbage below last record")
 	gabList, cutted := cutRecordsBelow(gabList, tmpInd[len(tmpInd)-1].Pos)
 	if cutted {
 		var garbage models.SHeader
@@ -358,7 +361,7 @@ func optimizeFile(fileConfig *driver.FileConfig, isMaster bool) (*driver.FileCon
 	if calculateFragmentationPercentage(fileConfig.Ind, isMaster) > driver.FragmentationThreshold*100 {
 		fmt.Println("Need to defragment")
 		//defragment
-		if tmpInd, err = defragmentFile(fileConfig.FL, fileConfig.Ind, gabList, isMaster); err != nil {
+		if tmpInd, err = defragmentFile(fileConfig.FL, fileConfig.Ind, gabList, addConfig, isMaster); err != nil {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 		}
 		if err := fileConfig.FL.Truncate(tmpInd[len(tmpInd)-1].Pos + trSize); err != nil {
@@ -403,6 +406,21 @@ func cutRecordsBelow(slice []driver.IndexTable, lastUserPos int64) ([]driver.Ind
 
 	return slice, size != len(slice)
 }
+func cutRecordsAbove(slice []driver.IndexTable, lastUserPos int64) ([]driver.IndexTable, bool) {
+	size := len(slice)
+	slice = SortIndicesByPos(slice)
+
+	for i := 0; i < len(slice); i++ {
+		if slice[i].Pos < lastUserPos {
+			slice = append(slice[:i], slice[i+1:]...)
+		} else {
+			break
+		}
+	}
+
+	return slice, size != len(slice)
+}
+
 func calculateFragmentationPercentage(table []driver.IndexTable, isMaster bool) float64 {
 	table = SortIndicesByPos(table)
 
@@ -419,7 +437,7 @@ func calculateFragmentationPercentage(table []driver.IndexTable, isMaster bool) 
 
 	return float64(emptySpace) / float64(fullFileSize) * 100
 }
-func defragmentFile(file *os.File, ind []driver.IndexTable, gab []driver.IndexTable, isMaster bool) ([]driver.IndexTable, error) {
+func defragmentFile(file *os.File, ind []driver.IndexTable, gab []driver.IndexTable, addConfig *driver.FileConfig, isMaster bool) ([]driver.IndexTable, error) {
 	ind = SortIndicesByPos(ind)
 	gab = SortIndicesByPos(gab)
 	if isMaster {
@@ -439,8 +457,188 @@ func defragmentFile(file *os.File, ind []driver.IndexTable, gab []driver.IndexTa
 
 		}
 
+		return ind, nil
+
+	} else {
+		//reorder slave file
+		afterOpt := int64(len(ind)) * driver.OrderSize
+		var optimized bool
+		//first reorder tails
+		tails := make([]driver.IndexTable, 0)
+		heads := make([]driver.IndexTable, 0)
+		for _, v := range ind {
+			var order models.Order
+			if !driver.ReadModel(file, &order, v.Pos) {
+				return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+			}
+			if order.Next == -1 {
+				tails = append(tails, v)
+			}
+			if order.Prev == -1 {
+				heads = append(heads, v)
+			}
+		}
+		userIdHeadPos := make([]driver.IndexTable, 0)
+		for _, v := range addConfig.Ind {
+			var user models.User
+			if !driver.ReadModel(addConfig.FL, &user, v.Pos) {
+				return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+			}
+			if user.FirstOrder != -1 {
+				userIdHeadPos = append(userIdHeadPos, driver.IndexTable{Id: user.ID, Pos: user.FirstOrder})
+			}
+		}
+		tails = SortIndicesByPos(tails)
+		var cutted bool
+		_, cutted = cutRecordsBelow(tails, afterOpt)
+		if cutted {
+			tails, _ = cutRecordsAbove(tails, afterOpt)
+			for i := len(tails) - 1; i >= 0; i-- {
+				v := tails[i]
+				var order models.Order
+				if !driver.ReadModel(file, &order, v.Pos) {
+					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+				}
+				ind = removeByPos(v.Pos, ind)
+				if !driver.WriteModel(file, order, gab[0].Pos) {
+					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+				}
+				prevPos := order.Prev
+				if prevPos != -1 {
+					if !driver.ReadModel(file, &order, prevPos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+					order.Next = gab[0].Pos
+					if !driver.WriteModel(file, order, prevPos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+				} else {
+					//this is head       v.Pos
+					//change headpos in user file
+					userPos := GetAddressById(order.UserId, addConfig.Ind)
+					var user models.User
+					if !driver.ReadModel(addConfig.FL, &user, userPos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+					user.FirstOrder = gab[0].Pos
+					if !driver.WriteModel(addConfig.FL, user, userPos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+					//delete from heads
+					heads = removeByPos(v.Pos, heads)
+				}
+				ind = append(ind, driver.IndexTable{Id: order.OrderId, Pos: gab[0].Pos})
+				ind = SortIndicesByPos(ind)
+				gab = removeByPos(gab[0].Pos, gab)
+				tails = removeByPos(v.Pos, tails)
+				if ind[len(ind)-1].Pos == afterOpt {
+					optimized = true
+					break
+				}
+			}
+		}
+		if !optimized {
+			//then reorder heads
+
+			heads = SortIndicesByPos(heads)
+			_, cutted = cutRecordsBelow(heads, afterOpt)
+			if cutted {
+				heads, _ = cutRecordsAbove(heads, afterOpt)
+				for i := len(heads) - 1; i >= 0; i-- {
+					v := heads[i]
+					var order models.Order
+					if !driver.ReadModel(file, &order, v.Pos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+					ind = removeByPos(v.Pos, ind)
+					if !driver.WriteModel(file, order, gab[0].Pos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+					nextPos := order.Next
+
+					if !driver.ReadModel(file, &order, nextPos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+					order.Prev = gab[0].Pos
+					if !driver.WriteModel(file, order, nextPos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+
+					//change headpos in user file
+					var user models.User
+					userPos := GetAddressById(order.UserId, addConfig.Ind)
+					if !driver.ReadModel(addConfig.FL, &user, userPos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+					user.FirstOrder = gab[0].Pos
+					if !driver.WriteModel(addConfig.FL, user, userPos) {
+						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+					}
+
+					ind = append(ind, driver.IndexTable{Id: order.OrderId, Pos: gab[0].Pos})
+					ind = SortIndicesByPos(ind)
+					gab = removeByPos(gab[0].Pos, gab)
+					heads = removeByPos(v.Pos, heads)
+					if ind[len(ind)-1].Pos == afterOpt {
+						optimized = true
+						break
+					}
+				}
+			}
+
+		} else {
+			return ind, nil
+		}
+
+		if !optimized {
+			//then reorder the rest
+			for ind[len(ind)-1].Pos != afterOpt {
+				var order models.Order
+				if !driver.ReadModel(file, &order, ind[len(ind)-1].Pos) {
+					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+				}
+				ind = removeByPos(ind[len(ind)-1].Pos, ind)
+				if !driver.WriteModel(file, order, gab[0].Pos) {
+					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+				}
+				var nextOrder models.Order
+				nextPos := order.Next
+
+				if !driver.ReadModel(file, &nextOrder, nextPos) {
+					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+				}
+				nextOrder.Prev = gab[0].Pos
+				if !driver.WriteModel(file, nextOrder, nextPos) {
+					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+				}
+
+				var prevOrder models.Order
+				prevPos := order.Prev
+
+				if !driver.ReadModel(file, &prevOrder, prevPos) {
+					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+				}
+				prevOrder.Next = gab[0].Pos
+				if !driver.WriteModel(file, prevOrder, prevPos) {
+					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+				}
+
+				ind = append(ind, driver.IndexTable{Id: order.OrderId, Pos: gab[0].Pos})
+				ind = SortIndicesByPos(ind)
+				gab = removeByPos(gab[0].Pos, gab)
+
+			}
+			optimized = true
+		} else {
+			return ind, nil
+		}
+
+		if !optimized {
+			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+		} else {
+			return ind, nil
+		}
 	}
-	return ind, nil
 }
 func removeByPos(pos int64, indices []driver.IndexTable) []driver.IndexTable {
 	for i, v := range indices {

@@ -126,9 +126,9 @@ func FindPrevNode(file *os.File, headPos int64, recordPos int64, model interface
 	return prev
 
 }
-func AddGarbageNode(file *os.File, garbageSlave *models.SHeader, readPos int64, data any) bool {
-	garbageSlave.Next = readPos
-	if !driver.WriteModel(file, garbageSlave, garbageSlave.Pos) {
+func AddGarbageNode(file *os.File, garbage *models.SHeader, readPos int64, data any) bool {
+	garbage.Next = readPos
+	if !driver.WriteModel(file, garbage, garbage.Pos) {
 		log.Println("Error: write failed")
 		return false
 	}
@@ -136,35 +136,35 @@ func AddGarbageNode(file *os.File, garbageSlave *models.SHeader, readPos int64, 
 		log.Println("Error: write failed")
 		return false
 	}
-	garbageSlave.Prev = garbageSlave.Pos
-	garbageSlave.Pos = readPos
-	garbageSlave.Next = -1
-	if !driver.WriteModel(file, garbageSlave, readPos) {
+	garbage.Prev = garbage.Pos
+	garbage.Pos = readPos
+	garbage.Next = -1
+	if !driver.WriteModel(file, garbage, readPos) {
 		log.Println("Error: write failed")
 		return false
 	}
 	return true
 }
 
-func DeleteGarbageNode(fileConfig *driver.FileConfig) *models.SHeader {
+func DeleteGarbageNode(file *os.File, garbage *models.SHeader) *models.SHeader {
 
-	if fileConfig.GarbageNode.Prev == -1 {
-		fileConfig.GarbageNode.Next = -1
-		if !driver.WriteModel(fileConfig.FL, fileConfig.GarbageNode, fileConfig.GarbageNode.Pos) {
+	if garbage.Prev == -1 {
+		garbage.Next = -1
+		if !driver.WriteModel(file, garbage, garbage.Pos) {
 			log.Println("Error: write failed")
 			return nil
 		}
-		return fileConfig.GarbageNode
+		return garbage
 	}
 
 	var prev models.SHeader
-	if !driver.ReadModel(fileConfig.FL, &prev, fileConfig.GarbageNode.Prev) {
+	if !driver.ReadModel(file, &prev, garbage.Prev) {
 		fmt.Println("Error: read failed")
 		return nil
 	}
 
-	prev.Next = fileConfig.GarbageNode.Next
-	if !driver.WriteModel(fileConfig.FL, prev, fileConfig.GarbageNode.Prev) {
+	prev.Next = garbage.Next
+	if !driver.WriteModel(file, prev, garbage.Prev) {
 		fmt.Println("Error: write failed")
 		return nil
 	}
@@ -387,5 +387,134 @@ func optimizeFile(fileConfig *driver.FileConfig, isMaster bool) error {
 		}
 
 	}
+	if calculateFragmentationPercentage(fileConfig.Ind, isMaster) > driver.FragmentationThreshold*100 {
+		fmt.Println("Need to defragment")
+	}
+
 	return nil
+}
+
+func calculateFragmentationPercentage(table []driver.IndexTable, isMaster bool) float64 {
+	table = SortIndicesByPos(table)
+
+	var size int64
+	if isMaster {
+		size = driver.UserSize
+	} else {
+		size = driver.OrderSize
+	}
+
+	fullFileSize := table[len(table)-1].Pos
+
+	emptySpace := fullFileSize - int64(len(table))*size
+
+	return float64(emptySpace) / float64(fullFileSize) * 100
+}
+
+func CreateFileConfig(filename string, isMaster bool) (*driver.FileConfig, error) {
+	FL, err := os.OpenFile(filename+".fl", os.O_RDWR, 0666)
+	var headerNext int64
+	var indices []driver.IndexTable
+	var garbageNode *models.SHeader
+	var size int64
+	if isMaster {
+		size = driver.UserSize
+	} else {
+		size = driver.OrderSize
+
+	}
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// File doesn't exist, it was created
+			FL, err = os.OpenFile(filename+".fl", os.O_RDWR|os.O_CREATE, 0666)
+			if isMaster {
+				if !driver.WriteModel(FL, models.User{Deleted: true}, 0) {
+					return nil, err
+				}
+				headerNext = size
+			} else {
+				if !driver.WriteModel(FL, models.Order{Deleted: true}, 0) {
+					return nil, err
+				}
+				headerNext = size
+			}
+			garbageNode = &models.SHeader{Prev: -1, Pos: 0, Next: -1}
+			if !driver.WriteModel(FL, garbageNode, 0) {
+				return nil, err
+			}
+
+			log.Println("New config created")
+		} else {
+			// Some other error occurred
+			return nil, err
+		}
+	} else {
+		// File was opened
+		ind, err := os.OpenFile(filename+".ind", os.O_RDWR, 0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		indices, err = LoadIndices(ind)
+		if err != nil {
+			return nil, err
+		}
+		var posInFile int64
+
+		indices = SortIndicesByPos(indices)
+
+		posInFile = indices[len(indices)-1].Pos + size
+
+		indices = SortIndicesById(indices)
+
+		var gab models.SHeader
+		gabPos := FindLastNode(FL, 0, &gab)
+		if !driver.ReadModel(FL, &gab, gabPos) {
+			return nil, err
+		}
+		garbageNode = &gab
+		headerNext = posInFile
+
+		log.Println("Config loaded")
+	}
+
+	fileConfig := driver.NewFileConfig(FL, headerNext, indices, garbageNode)
+	return fileConfig, nil
+}
+func LoadIndices(indFile *os.File) ([]driver.IndexTable, error) {
+	readPos := int64(0)
+
+	var indices []driver.IndexTable
+	for {
+		var model driver.IndexTable
+		if !driver.ReadModel(indFile, &model, readPos) {
+			break
+		}
+		readPos += driver.IndexSize
+		indices = append(indices, model)
+	}
+
+	return indices, nil
+}
+func FindLastNode(file *os.File, recordPos int64, model interface{}) int64 {
+	var tmp int64
+
+	for {
+		if !driver.ReadModel(file, model, recordPos) {
+			return -1
+		}
+		switch modelTmp := model.(type) {
+		case *models.SHeader:
+			tmp = modelTmp.Next
+		case *models.Order:
+			tmp = modelTmp.Next
+		default:
+			return -1
+		}
+		if tmp == -1 {
+			break
+		}
+		recordPos = tmp
+	}
+	return recordPos
 }

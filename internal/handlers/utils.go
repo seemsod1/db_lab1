@@ -57,7 +57,7 @@ func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, use
 	if r.AppConfig.Slave.GarbageNode.Prev == -1 {
 		r.AppConfig.Slave.Pos += driver.OrderSize
 	}
-	r.AppConfig.Slave.GarbageNode = utils.DeleteGarbageNode(r.AppConfig.Slave)
+	r.AppConfig.Slave.GarbageNode = utils.DeleteGarbageNode(r.AppConfig.Slave.FL, r.AppConfig.Slave.GarbageNode)
 	if r.AppConfig.Slave.GarbageNode == nil {
 		log.Fatal("Unable to insert order")
 	}
@@ -87,7 +87,7 @@ func UserInsert(r *Repository, user models.User, index driver.IndexTable) {
 	if r.AppConfig.Master.GarbageNode.Prev == -1 {
 		r.AppConfig.Master.Pos += driver.UserSize
 	}
-	r.AppConfig.Master.GarbageNode = utils.DeleteGarbageNode(r.AppConfig.Master)
+	r.AppConfig.Master.GarbageNode = utils.DeleteGarbageNode(r.AppConfig.Master.FL, r.AppConfig.Master.GarbageNode)
 	if r.AppConfig.Master.GarbageNode == nil {
 		log.Fatal("Unable to insert user")
 	}
@@ -231,6 +231,7 @@ func printSlaveRecord(flFile *os.File, indexTable []driver.IndexTable, orderID i
 	var readPos int64
 	var linkedList = firstSlave != -1
 
+	indexTable = utils.SortIndicesById(indexTable)
 	if linkedList && len(queries) > 0 {
 		queries = queries[1:]
 	}

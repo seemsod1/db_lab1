@@ -3,10 +3,8 @@ package driver
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"github.com/seemsod1/db_lab1/internal/models"
 	"io"
-	"log"
 	"os"
 )
 
@@ -33,6 +31,8 @@ func NewFileConfig(file *os.File, pos int64, ind []IndexTable, garbageNode *mode
 
 const MasterFilename = "user"
 const SlaveFilename = "order"
+
+const FragmentationThreshold = 0.3
 
 var IndexSize = int64(binary.Size(IndexTable{}))
 var UserSize = int64(binary.Size(models.User{}))
@@ -69,82 +69,4 @@ func WriteModel(file *os.File, model any, position int64) bool {
 
 	file.Sync()
 	return true
-}
-
-func CreateFileConfig(filename string, isMaster bool) (*FileConfig, error) {
-	FL, err := os.OpenFile(filename+".fl", os.O_RDWR, 0666)
-	var headerNext int64
-	var indices []IndexTable
-	var garbageNode *models.SHeader
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			// File doesn't exist, it was created
-			FL, err = os.OpenFile(filename+".fl", os.O_RDWR|os.O_CREATE, 0666)
-			if isMaster {
-				if !WriteModel(FL, models.User{Deleted: true}, 0) {
-					return nil, err
-				}
-				headerNext = UserSize
-			} else {
-				if !WriteModel(FL, models.Order{Deleted: true}, 0) {
-					return nil, err
-				}
-				headerNext = OrderSize
-			}
-			garbageNode = &models.SHeader{Prev: -1, Pos: 0, Next: -1}
-			if !WriteModel(FL, garbageNode, 0) {
-				return nil, err
-			}
-
-			log.Println("New config created")
-		} else {
-			// Some other error occurred
-			return nil, err
-		}
-	} else {
-		// File was opened
-		ind, err := os.OpenFile(filename+".ind", os.O_RDWR, 0666)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		indices, err = LoadIndices(ind)
-		if err != nil {
-			return nil, err
-		}
-		var posInFile int64
-		if isMaster {
-			posInFile = FindFilePos(FL, &models.User{})
-		} else {
-			posInFile = FindFilePos(FL, &models.Order{})
-		}
-
-		var gab models.SHeader
-		gabPos := FindLastNode(FL, 0, &gab)
-		if !ReadModel(FL, &gab, gabPos) {
-			return nil, err
-		}
-		garbageNode = &gab
-		headerNext = posInFile
-
-		log.Println("Config loaded")
-	}
-
-	fileConfig := NewFileConfig(FL, headerNext, indices, garbageNode)
-	return fileConfig, nil
-}
-func LoadIndices(indFile *os.File) ([]IndexTable, error) {
-	readPos := int64(0)
-
-	var indices []IndexTable
-	for {
-		var model IndexTable
-		if !ReadModel(indFile, &model, readPos) {
-			break
-		}
-		readPos += IndexSize
-		indices = append(indices, model)
-	}
-
-	return indices, nil
 }

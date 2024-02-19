@@ -16,14 +16,14 @@ var app config.AppConfig
 
 func main() {
 
-	fileConfig, err := driver.CreateFileConfig(driver.MasterFilename, true)
+	fileConfig, err := utils.CreateFileConfig(driver.MasterFilename, true)
 	if err != nil {
 		log.Fatal(err)
 	}
 	app.Master = fileConfig
 	// Open master indexes
 
-	fileConfig, err = driver.CreateFileConfig(driver.SlaveFilename, false)
+	fileConfig, err = utils.CreateFileConfig(driver.SlaveFilename, false)
 	if err != nil {
 		log.Fatal(err)
 	}

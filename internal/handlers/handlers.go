@@ -209,7 +209,7 @@ func (r *Repository) InsertS(_ *cobra.Command, args []string) {
 
 	}
 	//find last node
-	lastNodePos := driver.FindLastNode(r.AppConfig.Slave.FL, pos, &models.Order{})
+	lastNodePos := utils.FindLastNode(r.AppConfig.Slave.FL, pos, &models.Order{})
 	if lastNodePos == -1 {
 		fmt.Fprintf(os.Stderr, "error: last node not found\n")
 		return
@@ -517,10 +517,4 @@ func (r *Repository) CalcS(cmd *cobra.Command, args []string) {
 }
 func (r *Repository) CalcM(_ *cobra.Command, _ []string) {
 	log.Println("Total amount of users: ", utils.NumberOfRecords(r.AppConfig.Master.Ind))
-
-	var garbageNode models.SHeader
-	if !driver.ReadModel(r.AppConfig.Slave.FL, &garbageNode, 0) {
-		log.Fatal("Unable to calculate amount of deleted users")
-	}
-	fmt.Println(fmt.Sprintf("Prev: %d, Pos: %d, Next: %d", garbageNode.Prev, garbageNode.Pos, garbageNode.Next))
 }

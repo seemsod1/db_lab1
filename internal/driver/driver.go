@@ -11,8 +11,8 @@ import (
 )
 
 type IndexTable struct {
-	Pos    int64
-	UserId uint32
+	Pos int64
+	Id  uint32
 }
 
 type FileConfig struct {
@@ -39,6 +39,9 @@ var UserSize = int64(binary.Size(models.User{}))
 var OrderSize = int64(binary.Size(models.Order{}))
 
 const MinAge = 17
+const MaxAge = 120
+
+const MaxPrice = 1000000
 
 func ReadModel(file *os.File, model any, position int64) bool {
 	file.Seek(position, io.SeekStart)
@@ -46,6 +49,7 @@ func ReadModel(file *os.File, model any, position int64) bool {
 	if err != nil {
 		return false
 	}
+	file.Sync()
 	return true
 }
 

@@ -24,7 +24,7 @@ func initRootCommands() *cobra.Command {
 		Run:   handlers.Repo.GetM,
 	}
 	var insertSCmd = &cobra.Command{
-		Use:   "insert-s <user_id> <rent_id> <price> <country>",
+		Use:   "insert-s <order_id> <user_id> <price> <country>",
 		Short: "Insert slave record into file",
 		Long:  ``,
 		Args:  cobra.ExactArgs(4),
@@ -34,19 +34,21 @@ func initRootCommands() *cobra.Command {
 		Use:   "ut-m",
 		Short: "Utility for master file",
 		Long:  ``,
+		Args:  cobra.NoArgs,
 		Run:   handlers.Repo.UtilM,
 	}
 	var utilSCmd = &cobra.Command{
 		Use:   "ut-s",
 		Short: "Utility for slave file",
 		Long:  ``,
+		Args:  cobra.NoArgs,
 		Run:   handlers.Repo.UtilS,
 	}
 	var getSCmd = &cobra.Command{
-		Use:   "get-s <user_id> <rent_id> [flags]",
+		Use:   "get-s <order_id> <user_id> [flags]",
 		Short: "Get slave record from file",
 		Long:  ``,
-		Args:  cobra.MinimumNArgs(2),
+		Args:  cobra.MinimumNArgs(1),
 		Run:   handlers.Repo.GetS,
 	}
 	var updateMCmd = &cobra.Command{
@@ -58,7 +60,7 @@ func initRootCommands() *cobra.Command {
 	}
 
 	var updateSCmd = &cobra.Command{
-		Use:   "update-s <user_id> <rent_id> <price> <country>",
+		Use:   "update-s <order_id> <price> <country>",
 		Short: "Update slave record in file",
 		Long:  ``,
 		Args:  cobra.ExactArgs(4),
@@ -66,7 +68,7 @@ func initRootCommands() *cobra.Command {
 	}
 
 	var deleteSCmd = &cobra.Command{
-		Use:   "delete-s <user_id> <rent_id>",
+		Use:   "delete-s <order_id> <user_id>",
 		Short: "Delete slave record from file",
 		Long:  ``,
 		Args:  cobra.ExactArgs(2),

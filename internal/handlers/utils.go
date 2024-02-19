@@ -26,7 +26,7 @@ func OrderDelete(r *Repository, readPos int64, prev int64) {
 	}
 	log.Print("Order deleted")
 }
-func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, prev ...int64) {
+func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, userId uint32, First bool, prev ...int64) {
 	var pos int64
 
 	if r.AppConfig.Slave.GarbageNode.Prev == -1 {
@@ -34,20 +34,25 @@ func OrderInsert(r *Repository, order models.Order, index driver.IndexTable, pre
 	} else {
 		pos = r.AppConfig.Slave.GarbageNode.Pos
 	}
-	if len(prev) != 0 {
-		if !utils.AddNode(order, r.AppConfig.Slave.FL, pos, prev[0]) {
-			log.Fatal("Unable to insert order")
-		}
-	} else {
-		if index.Pos != -1 {
-			index.Pos = pos
-			r.AppConfig.Slave.Ind = append(r.AppConfig.Slave.Ind, index)
-			r.AppConfig.Slave.Ind = utils.SortIndices(r.AppConfig.Slave.Ind)
-		}
+	if First {
 		if !utils.AddNode(order, r.AppConfig.Slave.FL, pos) {
 			log.Fatal("Unable to insert order")
 		}
+
+		userPos := utils.GetAddressById(userId, r.AppConfig.Master.Ind)
+		if userPos == -1 {
+			log.Fatal("Unable to insert order")
+		}
+
+		utils.ChangeMasterFirstOrder(r.AppConfig.Master.FL, userPos, pos)
+	} else {
+		if !utils.AddNode(order, r.AppConfig.Slave.FL, pos, prev[0]) {
+			log.Fatal("Unable to insert order")
+		}
 	}
+	index.Pos = pos
+	r.AppConfig.Slave.Ind = append(r.AppConfig.Slave.Ind, index)
+	r.AppConfig.Slave.Ind = utils.SortIndicesById(r.AppConfig.Slave.Ind)
 
 	if r.AppConfig.Slave.GarbageNode.Prev == -1 {
 		r.AppConfig.Slave.Pos += driver.OrderSize
@@ -78,7 +83,7 @@ func UserInsert(r *Repository, user models.User, index driver.IndexTable) {
 	}
 
 	r.AppConfig.Master.Ind = append(r.AppConfig.Master.Ind, index)
-	r.AppConfig.Master.Ind = utils.SortIndices(r.AppConfig.Master.Ind)
+	r.AppConfig.Master.Ind = utils.SortIndicesById(r.AppConfig.Master.Ind)
 	if r.AppConfig.Master.GarbageNode.Prev == -1 {
 		r.AppConfig.Master.Pos += driver.UserSize
 	}
@@ -93,7 +98,7 @@ func printMasterFile(file *os.File) {
 	t := table.NewWriter()
 	t.SetStyle(table.StyleLight)
 	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"#", "Name", "Mail", "Age", "Deleted"})
+	t.AppendHeader(table.Row{"#", "Name", "Mail", "Age", "Deleted", "FirstOrder"})
 
 	var user models.User
 	var garbage models.SHeader
@@ -104,10 +109,10 @@ func printMasterFile(file *os.File) {
 			if !driver.ReadModel(file, &garbage, readPos) {
 				log.Fatal("Failed to print master file")
 			}
-			t.AppendRow([]interface{}{-111, garbage.Prev, garbage.Pos, garbage.Next, true, "Garbage", driver.UserSize})
+			t.AppendRow([]interface{}{-111, garbage.Prev, garbage.Pos, garbage.Next, true, -111, "Garbage", driver.UserSize})
 			readPos += driver.UserSize
 		} else {
-			t.AppendRow([]interface{}{user.ID, utils.ByteArrayToString(user.Name[:]), utils.ByteArrayToString(user.Mail[:]), user.Age, user.Deleted, "User", binary.Size(user)})
+			t.AppendRow([]interface{}{user.ID, utils.ByteArrayToString(user.Name[:]), utils.ByteArrayToString(user.Mail[:]), user.Age, user.Deleted, user.FirstOrder, "User", binary.Size(user)})
 			readPos += driver.UserSize
 		}
 
@@ -119,7 +124,7 @@ func printSlaveFile(file *os.File) {
 	t := table.NewWriter()
 	t.SetStyle(table.StyleLight)
 	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"User_id", "Rent_id", "Price", "Country", "Deleted", "Next"})
+	t.AppendHeader(table.Row{"Order_id", "User_id", "Price", "Country", "Deleted", "Next"})
 	var order models.Order
 	var garbage models.SHeader
 	readPos := int64(0)
@@ -131,7 +136,7 @@ func printSlaveFile(file *os.File) {
 			}
 			t.AppendRow([]interface{}{garbage.Prev, garbage.Pos, garbage.Next, "", true, "", "Garbage", driver.OrderSize})
 		} else {
-			t.AppendRow([]interface{}{order.UserId, order.RentId, order.Price, utils.ByteArrayToString(order.Country[:]), order.Deleted, order.Next, "Order", binary.Size(order)})
+			t.AppendRow([]interface{}{order.OrderId, order.UserId, order.Price, utils.ByteArrayToString(order.Country[:]), order.Deleted, order.Next, "Order", binary.Size(order)})
 		}
 		readPos += driver.OrderSize
 	}
@@ -222,34 +227,41 @@ func printMasterRecord(file *os.File, indexTable []driver.IndexTable, pos int64,
 	}
 	t.Render()
 }
-func printSlaveRecord(file *os.File, index driver.IndexTable, rentId uint32, queries []string, allUsers bool, allOrders bool) {
+func printSlaveRecord(flFile *os.File, indexTable []driver.IndexTable, orderID int, firstSlave int64, queries []string, all bool) {
 	var readPos int64
-	empty := true
-	headers := []string{"user_id", "rent_id"}
+
+	var linkedList = firstSlave != -1
+
+	if all {
+		if firstSlave == -1 {
+			readPos = indexTable[0].Pos
+		} else {
+			readPos = firstSlave
+		}
+	} else {
+		readPos = utils.GetAddressById(uint32(orderID), indexTable)
+	}
+
+	headers := []string{"ORDER_ID", "USER_ID"}
 	if len(queries) != 0 {
 		for _, query := range queries {
 			fieldName := strings.ToUpper(query)
 
 			switch fieldName {
-			case "USER_ID":
-			case "RENT_ID":
+			case "ORDER_ID":
 			case "PRICE":
-				headers = append(headers, "price")
+				headers = append(headers, "PRICE")
 			case "COUNTRY":
-				headers = append(headers, "country")
-			case "DELETED":
-				headers = append(headers, "deleted")
-			case "NEXT":
-				headers = append(headers, "next")
+				headers = append(headers, "COUNTRY")
 			default:
 				fmt.Fprintf(os.Stderr, "field '%s' was not found\n", query)
 			}
 		}
 	} else {
-		headers = append(headers, "price", "country")
+		headers = append(headers, "PRICE", "COUNTRY")
 	}
 
-	if len(headers) == 2 && (!slices.Contains(queries, "user_id") || !slices.Contains(queries, "rent_id")) {
+	if len(headers) == 1 && (!slices.Contains(queries, "ORDER_ID") || !slices.Contains(queries, "USER_ID")) {
 		fmt.Fprintln(os.Stderr, "nothing to show")
 		return
 	}
@@ -262,57 +274,51 @@ func printSlaveRecord(file *os.File, index driver.IndexTable, rentId uint32, que
 		headerRow[i] = header
 	}
 	t.AppendHeader(headerRow)
-	var model models.Order
-	for driver.ReadModel(file, &model, readPos) {
-		if model.Deleted {
-			readPos += driver.OrderSize
-			continue
-		}
-		if !allUsers || !allOrders {
-			if allUsers {
-				if model.RentId != rentId {
-					readPos += driver.OrderSize
-					continue
-				}
-			}
-			if allOrders {
-				if model.UserId != index.UserId {
-					readPos += driver.OrderSize
-					continue
-				}
-			}
-		}
-		if !allUsers && !allOrders {
-			if model.UserId != index.UserId || model.RentId != rentId {
-				readPos += driver.OrderSize
-				continue
-			}
+
+	i := 0
+	for {
+		var order models.Order
+		if !driver.ReadModel(flFile, &order, readPos) {
+			break
 		}
 
 		var row []interface{}
 		for _, header := range headers {
-			switch strings.ToUpper(header) {
+			switch header {
+			case "ORDER_ID":
+				row = append(row, order.OrderId)
 			case "USER_ID":
-				row = append(row, model.UserId)
-			case "RENT_ID":
-				row = append(row, model.RentId)
+				row = append(row, order.UserId)
 			case "PRICE":
-				row = append(row, model.Price)
+				row = append(row, order.Price)
 			case "COUNTRY":
-				row = append(row, utils.ByteArrayToString(model.Country[:]))
-			case "DELETED":
-				row = append(row, model.Deleted)
-			case "NEXT":
-				row = append(row, model.Next)
+				row = append(row, utils.ByteArrayToString(order.Country[:]))
 			}
 		}
+
 		t.AppendRow(row)
-		empty = false
-		readPos += driver.OrderSize
+
+		if linkedList {
+			if order.Next == -1 {
+				break
+			}
+		} else {
+			if i == len(indexTable)-1 {
+				break
+			}
+		}
+		i++
+		if !all {
+			break
+		} else {
+			if !linkedList {
+				readPos = indexTable[i].Pos
+			} else {
+				readPos = order.Next
+			}
+		}
+
 	}
-	if !empty {
-		t.Render()
-	} else {
-		fmt.Fprintln(os.Stderr, "No records found")
-	}
+
+	t.Render()
 }

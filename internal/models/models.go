@@ -7,8 +7,8 @@ type SHeader struct {
 }
 
 type Order struct {
+	OrderId uint32
 	UserId  uint32
-	RentId  uint32
 	Price   uint32
 	Country [10]byte
 	Next    int64
@@ -16,9 +16,10 @@ type Order struct {
 }
 
 type User struct {
-	ID      uint32
-	Age     uint32
-	Name    [10]byte
-	Mail    [30]byte
-	Deleted bool
+	ID         uint32
+	Age        uint32
+	Name       [10]byte
+	Mail       [30]byte
+	FirstOrder int64
+	Deleted    bool
 }

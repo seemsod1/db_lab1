@@ -229,8 +229,11 @@ func printMasterRecord(file *os.File, indexTable []driver.IndexTable, pos int64,
 }
 func printSlaveRecord(flFile *os.File, indexTable []driver.IndexTable, orderID int, firstSlave int64, queries []string, all bool) {
 	var readPos int64
-
 	var linkedList = firstSlave != -1
+
+	if linkedList && len(queries) > 0 {
+		queries = queries[1:]
+	}
 
 	if all {
 		if firstSlave == -1 {

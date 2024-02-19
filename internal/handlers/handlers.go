@@ -95,11 +95,12 @@ func (r *Repository) GetS(cmd *cobra.Command, args []string) {
 	var fsAddress int64 = -1
 	var queries []string
 
+	queries = make([]string, 0, len(args)-1)
+	for _, q := range args[1:] {
+		queries = append(queries, strings.ToUpper(q))
+	}
+
 	if len(args) > 1 {
-		queries = make([]string, 0, len(args)-1)
-		for _, q := range args[1:] {
-			queries = append(queries, strings.ToUpper(q))
-		}
 
 		userID, err = strconv.Atoi(queries[0])
 		if err != nil {
@@ -118,6 +119,10 @@ func (r *Repository) GetS(cmd *cobra.Command, args []string) {
 				return
 			}
 
+			if model.FirstOrder == -1 {
+				fmt.Fprintf(os.Stderr, "user with ID %d has no orders\n", userID)
+				return
+			}
 			fsAddress = model.FirstOrder
 
 		}
@@ -407,6 +412,10 @@ func (r *Repository) DeleteS(_ *cobra.Command, args []string) {
 	prevPos := int64(-1)
 	if !driver.ReadModel(r.AppConfig.Slave.FL, &order, readPos) {
 		fmt.Fprintf(os.Stderr, "error: unable to delete record")
+		return
+	}
+	if order.UserId != uint32(userId) {
+		fmt.Fprintf(os.Stderr, "error: order with ID %d doesnt belong to user with ID %d\n", orderId, userId)
 		return
 	}
 	orderIndex := utils.GetIdByAddress(orderPos, r.AppConfig.Slave.Ind)

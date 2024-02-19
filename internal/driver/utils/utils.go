@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"github.com/seemsod1/db_lab1/internal/driver"
+	myErr "github.com/seemsod1/db_lab1/internal/error"
 	"github.com/seemsod1/db_lab1/internal/models"
 	"log"
 	"os"
@@ -222,45 +224,43 @@ func WriteIndices(filename string, indices []driver.IndexTable) {
 	log.Println("Indices written")
 	FL.Close()
 }
-func CloseFile(fileConfig *driver.FileConfig, isMaster bool) bool {
+func CloseFile(fileConfig *driver.FileConfig, isMaster bool) error {
 	if len(fileConfig.Ind) == 0 {
-		fileConfig.FL.Truncate(0)
+		if err := fileConfig.FL.Truncate(0); err != nil {
+			return &myErr.Error{Err: myErr.FailedToOptimize}
+		}
 		if isMaster {
 			if !driver.WriteModel(fileConfig.FL, models.User{Deleted: true}, 0) {
-				return false
+				return &myErr.Error{Err: myErr.FailedToOptimize}
 			}
 		} else {
 			if !driver.WriteModel(fileConfig.FL, models.Order{Deleted: true}, 0) {
-				return false
+				return &myErr.Error{Err: myErr.FailedToOptimize}
 			}
 		}
 		garbageNode := &models.SHeader{Prev: -1, Pos: 0, Next: -1}
 		if !driver.WriteModel(fileConfig.FL, garbageNode, 0) {
-			return false
+			return &myErr.Error{Err: myErr.FailedToOptimize}
 		}
-
-	} else {
-		//optimizing file
-		gabList := CreateGarbageIndexTable(fileConfig.FL, 0)
-		if gabList == nil || len(gabList) == 1 {
-			fileConfig.FL.Close()
-			return true
-		}
-		gabList = SortIndicesByPos(gabList)
-		if isMaster {
-			if err := ReorderGarbage(fileConfig.FL, gabList, models.User{Deleted: true}); err != nil {
-				fileConfig.FL.Close()
-				return false
-			}
-		} else {
-			if err := ReorderGarbage(fileConfig.FL, gabList, models.Order{Deleted: true}); err != nil {
-				fileConfig.FL.Close()
-				return false
-			}
-		}
+		return nil
 	}
-	fileConfig.FL.Close()
-	return true
+	err := optimizeFile(fileConfig, isMaster)
+	if errors.Is(err, &myErr.Error{Err: myErr.AlreadyOptimized}) {
+		if err = fileConfig.FL.Close(); err != nil {
+			return &myErr.Error{Err: myErr.FailedToOptimize}
+		}
+		return &myErr.Error{Err: myErr.AlreadyOptimized}
+	} else if errors.Is(err, &myErr.Error{Err: myErr.FailedToOptimize}) {
+		if err = fileConfig.FL.Close(); err != nil {
+			return &myErr.Error{Err: myErr.FailedToOptimize}
+		}
+		return &myErr.Error{Err: myErr.FailedToOptimize}
+	}
+	if err = fileConfig.FL.Close(); err != nil {
+		return &myErr.Error{Err: myErr.FailedToOptimize}
+	}
+	return nil
+
 }
 
 func RemoveById(id uint32, indices []driver.IndexTable) []driver.IndexTable {
@@ -282,7 +282,7 @@ func ChangeMasterFirstOrder(masterFile *os.File, userPos int64, firstOrder int64
 		log.Fatal("Unable to change first order")
 	}
 }
-func CreateGarbageIndexTable(file *os.File, pos int64) []driver.IndexTable {
+func createGarbageIndexTable(file *os.File, pos int64) []driver.IndexTable {
 	var indices []driver.IndexTable
 	i := uint32(0)
 	var garbage models.SHeader
@@ -298,20 +298,23 @@ func CreateGarbageIndexTable(file *os.File, pos int64) []driver.IndexTable {
 	return indices
 }
 
-func ReorderGarbage(file *os.File, indices []driver.IndexTable, model any) error {
+func reorderGarbage(file *os.File, indices []driver.IndexTable, model any) ([]driver.IndexTable, error) {
 	var garbage models.SHeader
+	var ind []driver.IndexTable
 	readPos := int64(0)
 	if !driver.ReadModel(file, &garbage, readPos) {
-		return fmt.Errorf("Error: read failed")
+		return nil, fmt.Errorf("Error: read failed")
 	}
+	ind = append(ind, indices[0])
 	indices = append(indices[:0], indices[1:]...)
-	for _, ind := range indices {
-		readPos = ind.Pos
+	for _, i := range indices {
+		readPos = i.Pos
 		if !AddGarbageNode(file, &garbage, readPos, model) {
-			return fmt.Errorf("Error: add garbage node failed")
+			return nil, fmt.Errorf("Error: add garbage node failed")
 		}
+		ind = append(ind, driver.IndexTable{Id: i.Id, Pos: readPos})
 	}
-	return nil
+	return ind, nil
 }
 func NumberOfSubrecords(flFile *os.File, firstSlaveAddress int64) int {
 	count := 0
@@ -328,4 +331,61 @@ func NumberOfSubrecords(flFile *os.File, firstSlaveAddress int64) int {
 	}
 
 	return count
+}
+
+func deleteRecords(slice []driver.IndexTable, lastUserPos int64) ([]driver.IndexTable, bool) {
+	size := len(slice)
+	slice = SortIndicesByPos(slice)
+
+	for i := len(slice) - 1; i >= 0; i-- {
+		if slice[i].Pos > lastUserPos {
+			slice = append(slice[:i], slice[i+1:]...)
+		} else {
+			break
+		}
+	}
+
+	return slice, size != len(slice)
+}
+
+func optimizeFile(fileConfig *driver.FileConfig, isMaster bool) error {
+	gabList := createGarbageIndexTable(fileConfig.FL, 0)
+	if gabList == nil || len(gabList) < 2 {
+		return &myErr.Error{Err: myErr.AlreadyOptimized}
+	}
+	gabList = SortIndicesByPos(gabList)
+	tmpInd := SortIndicesByPos(fileConfig.Ind)
+	trSize := int64(0)
+	var err error
+	if isMaster {
+		//reorder garbage
+		gabList, err = reorderGarbage(fileConfig.FL, gabList, models.User{Deleted: true})
+		if err != nil {
+			return &myErr.Error{Err: myErr.FailedToOptimize}
+		}
+		trSize = driver.UserSize
+	} else {
+		gabList, err = reorderGarbage(fileConfig.FL, gabList, models.Order{Deleted: true})
+		if err != nil {
+			return &myErr.Error{Err: myErr.FailedToOptimize}
+		}
+		trSize = driver.OrderSize
+	}
+	//delete records which are after last user
+	gabList, cutted := deleteRecords(gabList, tmpInd[len(tmpInd)-1].Pos)
+	if cutted {
+		var garbage models.SHeader
+		if !driver.ReadModel(fileConfig.FL, &garbage, gabList[len(gabList)-1].Pos) {
+			return &myErr.Error{Err: myErr.FailedToOptimize}
+		}
+		garbage.Next = -1
+		if !driver.WriteModel(fileConfig.FL, garbage, gabList[len(gabList)-1].Pos) {
+			return &myErr.Error{Err: myErr.FailedToOptimize}
+		}
+		if err := fileConfig.FL.Truncate(tmpInd[len(tmpInd)-1].Pos + trSize); err != nil {
+			return &myErr.Error{Err: myErr.FailedToOptimize}
+		}
+
+	}
+	return nil
 }

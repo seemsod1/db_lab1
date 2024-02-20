@@ -327,9 +327,9 @@ func OptimizeFile(fileConfig *driver.FileConfig, addConfig *driver.FileConfig, i
 		return fileConfig, nil
 	}
 	gabList = gabList[1:]
-	log.Println("Checking fragmentation percentage")
+	//log.Println("Checking fragmentation percentage")
 	if calculateFragmentationPercentage(fileConfig.Ind, isMaster) > driver.FragmentationThreshold*100 {
-		fmt.Println("Need to defragment")
+		//fmt.Println("Need to defragment")
 		//defragment
 		if tmpInd, err = defragmentFile(fileConfig.FL, fileConfig.Ind, gabList, addConfig, isMaster); err != nil {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
@@ -345,7 +345,7 @@ func OptimizeFile(fileConfig *driver.FileConfig, addConfig *driver.FileConfig, i
 		fileConfig.Pos = tmpInd[len(tmpInd)-1].Pos + trSize
 		return fileConfig, nil
 	}
-	log.Println("No need to defragment")
+	//log.Println("No need to defragment")
 	tmpInd = SortIndicesById(tmpInd)
 	fileConfig.Ind = tmpInd
 	return fileConfig, nil

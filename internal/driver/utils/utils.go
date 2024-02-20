@@ -500,6 +500,7 @@ func defragmentFile(file *os.File, ind []driver.IndexTable, gab []driver.IndexTa
 					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 				}
 				ind = removeByPos(v.Pos, ind)
+				id := order.OrderId
 				if !driver.WriteModel(file, order, gab[0].Pos) {
 					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 				}
@@ -527,7 +528,7 @@ func defragmentFile(file *os.File, ind []driver.IndexTable, gab []driver.IndexTa
 					//delete from heads
 					heads = removeByPos(v.Pos, heads)
 				}
-				ind = append(ind, driver.IndexTable{Id: order.OrderId, Pos: gab[0].Pos})
+				ind = append(ind, driver.IndexTable{Id: id, Pos: gab[0].Pos})
 				ind = SortIndicesByPos(ind)
 				gab = removeByPos(gab[0].Pos, gab)
 				tails = removeByPos(v.Pos, tails)
@@ -550,6 +551,7 @@ func defragmentFile(file *os.File, ind []driver.IndexTable, gab []driver.IndexTa
 					if !driver.ReadModel(file, &order, v.Pos) {
 						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 					}
+					id := order.OrderId
 					ind = removeByPos(v.Pos, ind)
 					if !driver.WriteModel(file, order, gab[0].Pos) {
 						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
@@ -575,7 +577,7 @@ func defragmentFile(file *os.File, ind []driver.IndexTable, gab []driver.IndexTa
 						return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 					}
 
-					ind = append(ind, driver.IndexTable{Id: order.OrderId, Pos: gab[0].Pos})
+					ind = append(ind, driver.IndexTable{Id: id, Pos: gab[0].Pos})
 					ind = SortIndicesByPos(ind)
 					gab = removeByPos(gab[0].Pos, gab)
 					heads = removeByPos(v.Pos, heads)
@@ -597,6 +599,7 @@ func defragmentFile(file *os.File, ind []driver.IndexTable, gab []driver.IndexTa
 				if !driver.ReadModel(file, &order, ind[len(ind)-1].Pos) {
 					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 				}
+				id := order.OrderId
 				ind = removeByPos(ind[len(ind)-1].Pos, ind)
 				if !driver.WriteModel(file, order, gab[0].Pos) {
 					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
@@ -623,7 +626,7 @@ func defragmentFile(file *os.File, ind []driver.IndexTable, gab []driver.IndexTa
 					return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 				}
 
-				ind = append(ind, driver.IndexTable{Id: order.OrderId, Pos: gab[0].Pos})
+				ind = append(ind, driver.IndexTable{Id: id, Pos: gab[0].Pos})
 				ind = SortIndicesByPos(ind)
 				gab = removeByPos(gab[0].Pos, gab)
 

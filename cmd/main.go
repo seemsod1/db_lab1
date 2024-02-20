@@ -45,20 +45,16 @@ func main() {
 	}
 
 	//close slave file
-	app.Slave, err = utils.CloseFile(app.Slave, app.Master, false)
-	if errors.Is(err, &myErr.Error{Err: myErr.FailedToOptimize}) {
-		log.Fatal("Error: failed to optimize slave file")
-	} else if errors.Is(err, &myErr.Error{Err: myErr.AlreadyOptimized}) {
-		log.Println("Slave file already optimized")
+	app.Slave, err = utils.CloseFile(app.Slave)
+	if errors.Is(err, &myErr.Error{Err: myErr.FailedToClose}) {
+		log.Fatal("Error: failed to close slave file")
 	} else {
 		log.Println("Slave file closed")
 	}
 	//close master file
-	app.Master, err = utils.CloseFile(app.Master, nil, true)
-	if errors.Is(err, &myErr.Error{Err: myErr.FailedToOptimize}) {
-		log.Fatal("Error: failed to optimize master file")
-	} else if errors.Is(err, &myErr.Error{Err: myErr.AlreadyOptimized}) {
-		log.Println("Master file already optimized")
+	app.Master, err = utils.CloseFile(app.Master)
+	if errors.Is(err, &myErr.Error{Err: myErr.FailedToClose}) {
+		log.Fatal("Error: failed to close master file")
 	} else {
 		log.Println("Master file closed")
 	}

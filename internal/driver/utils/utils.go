@@ -263,83 +263,49 @@ func SortIndicesByPos(indices []driver.IndexTable) []driver.IndexTable {
 
 }
 
-func CloseFile(firstConfig *driver.FileConfig, addConfig *driver.FileConfig, isMaster bool) (*driver.FileConfig, error) {
-	if len(firstConfig.Ind) == 0 {
-		if err := firstConfig.FL.Truncate(0); err != nil {
-			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-		}
-		if isMaster {
-			if !driver.WriteModel(firstConfig.FL, models.User{Deleted: true}, 0) {
-				return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-			}
-		} else {
-			if !driver.WriteModel(firstConfig.FL, models.Order{Deleted: true}, 0) {
-				return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-			}
-		}
-		garbageNode := &models.SHeader{Prev: -1, Pos: 0, Next: -1}
-		if !driver.WriteModel(firstConfig.FL, garbageNode, 0) {
-			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-		}
-
-		if err := firstConfig.FL.Close(); err != nil {
-			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-		}
-
-		return firstConfig, nil
-	}
-	log.Println("Optimizing file began")
-	var err error
-	firstConfig, err = optimizeFile(firstConfig, addConfig, isMaster)
-	if errors.Is(err, &myErr.Error{Err: myErr.AlreadyOptimized}) {
-		if err := firstConfig.FL.Close(); err != nil {
-			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-		}
-		return nil, &myErr.Error{Err: myErr.AlreadyOptimized}
-	} else if errors.Is(err, &myErr.Error{Err: myErr.FailedToOptimize}) {
-		if err := firstConfig.FL.Close(); err != nil {
-			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-		}
-		return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-	}
+func CloseFile(firstConfig *driver.FileConfig) (*driver.FileConfig, error) {
 	if err := firstConfig.FL.Close(); err != nil {
-		if err := firstConfig.FL.Close(); err != nil {
-			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-		}
-		return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+		return nil, &myErr.Error{Err: myErr.FailedToClose}
 	}
-
 	return firstConfig, nil
 
 }
-func optimizeFile(fileConfig *driver.FileConfig, addConfig *driver.FileConfig, isMaster bool) (*driver.FileConfig, error) {
+func OptimizeFile(fileConfig *driver.FileConfig, addConfig *driver.FileConfig, isMaster bool) (*driver.FileConfig, error) {
 	gabList := createGarbageIndexTable(fileConfig.FL, 0)
 	if gabList == nil || len(gabList) < 2 {
-		return fileConfig, &myErr.Error{Err: myErr.AlreadyOptimized}
+		return fileConfig, nil
 	}
 	gabList = SortIndicesByPos(gabList)
 	tmpInd := SortIndicesByPos(fileConfig.Ind)
 	trSize := int64(0)
 	var err error
-	log.Println("Changing garbage linked list order")
+
 	if isMaster {
-		//reorder garbage
-		gabList, err = reorderGarbage(fileConfig.FL, gabList, models.User{Deleted: true})
-		if err != nil {
-			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-		}
 		trSize = driver.UserSize
 	} else {
-		gabList, err = reorderGarbage(fileConfig.FL, gabList, models.Order{Deleted: true})
-		if err != nil {
-			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
-		}
 		trSize = driver.OrderSize
 	}
+	var pos int64
+	if len(tmpInd) == 0 {
+		pos = 0
+	} else {
+		pos = tmpInd[len(tmpInd)-1].Pos
+	}
 	//delete records which are after last user
-	log.Println("Cutting garbage below last record")
-	gabList, cutted := cutRecordsBelow(gabList, tmpInd[len(tmpInd)-1].Pos)
+	gabList, cutted := cutRecordsBelow(gabList, pos)
 	if cutted {
+		if isMaster {
+			gabList, err = reorderGarbage(fileConfig.FL, gabList, models.User{Deleted: true})
+			if err != nil {
+				return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+			}
+		} else {
+			gabList, err = reorderGarbage(fileConfig.FL, gabList, models.Order{Deleted: true})
+			if err != nil {
+				return nil, &myErr.Error{Err: myErr.FailedToOptimize}
+			}
+		}
+
 		var garbage models.SHeader
 		if !driver.ReadModel(fileConfig.FL, &garbage, gabList[len(gabList)-1].Pos) {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
@@ -348,13 +314,17 @@ func optimizeFile(fileConfig *driver.FileConfig, addConfig *driver.FileConfig, i
 		if !driver.WriteModel(fileConfig.FL, garbage, gabList[len(gabList)-1].Pos) {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 		}
-		if err := fileConfig.FL.Truncate(tmpInd[len(tmpInd)-1].Pos + trSize); err != nil {
+		fileConfig.GarbageNode = &garbage
+
+		if err := fileConfig.FL.Truncate(pos + trSize); err != nil {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 		}
 
+		fileConfig.Pos = pos + trSize
+
 	}
 	if len(gabList) < 2 {
-		return fileConfig, &myErr.Error{Err: myErr.AlreadyOptimized}
+		return fileConfig, nil
 	}
 	gabList = gabList[1:]
 	log.Println("Checking fragmentation percentage")
@@ -370,7 +340,13 @@ func optimizeFile(fileConfig *driver.FileConfig, addConfig *driver.FileConfig, i
 		if !driver.WriteModel(fileConfig.FL, &models.SHeader{Prev: -1, Pos: 0, Next: -1}, 0) {
 			return nil, &myErr.Error{Err: myErr.FailedToOptimize}
 		}
+		fileConfig.GarbageNode = &models.SHeader{Prev: -1, Pos: 0, Next: -1}
+		fileConfig.Ind = tmpInd
+		fileConfig.Pos = tmpInd[len(tmpInd)-1].Pos + trSize
+		return fileConfig, nil
 	}
+	log.Println("No need to defragment")
+	tmpInd = SortIndicesById(tmpInd)
 	fileConfig.Ind = tmpInd
 	return fileConfig, nil
 }

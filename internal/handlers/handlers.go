@@ -437,6 +437,12 @@ func (r *Repository) DeleteS(_ *cobra.Command, args []string) {
 	}
 	r.AppConfig.Slave.Ind = removeById(orderIndex, r.AppConfig.Slave.Ind)
 
+	r.AppConfig.Slave, err = utils.OptimizeFile(r.AppConfig.Slave, r.AppConfig.Master, false)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: unable to optimize file\n")
+		return
+	}
+
 }
 func (r *Repository) DeleteM(_ *cobra.Command, args []string) {
 	id, err := strconv.Atoi(args[0])
@@ -458,21 +464,34 @@ func (r *Repository) DeleteM(_ *cobra.Command, args []string) {
 
 		//delete all orders of user
 		readPos := user.FirstOrder
-		var tmp models.Order
-		for readPos != -1 {
-			if !driver.ReadModel(r.AppConfig.Slave.FL, &tmp, readPos) {
-				fmt.Fprintf(os.Stderr, "error: unable to delete user's order \n")
+		if readPos != -1 {
+			var tmp models.Order
+			for readPos != -1 {
+				if !driver.ReadModel(r.AppConfig.Slave.FL, &tmp, readPos) {
+					fmt.Fprintf(os.Stderr, "error: unable to delete user's order \n")
+					return
+				}
+				orderDelete(r, readPos, -1)
+				orderIndex := utils.GetIdByAddress(readPos, r.AppConfig.Slave.Ind)
+				r.AppConfig.Slave.Ind = removeById(orderIndex, r.AppConfig.Slave.Ind)
+				readPos = tmp.Next
+			}
+			r.AppConfig.Slave, err = utils.OptimizeFile(r.AppConfig.Slave, r.AppConfig.Master, false)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: unable to optimize file\n")
 				return
 			}
-			orderDelete(r, readPos, -1)
-			orderIndex := utils.GetIdByAddress(readPos, r.AppConfig.Slave.Ind)
-			r.AppConfig.Slave.Ind = removeById(orderIndex, r.AppConfig.Slave.Ind)
-			readPos = tmp.Next
 		}
 
 		userDelete(r, userPos)
 		r.AppConfig.Master.Ind = removeById(index, r.AppConfig.Master.Ind)
 		//change in index table
+
+		r.AppConfig.Master, err = utils.OptimizeFile(r.AppConfig.Master, nil, true)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: unable to optimize file\n")
+			return
+		}
 		return
 
 	}

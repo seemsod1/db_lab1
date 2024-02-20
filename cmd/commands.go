@@ -107,7 +107,7 @@ func initRootCommands() *cobra.Command {
 	rootCmd.AddCommand(calcMCmd)
 	rootCmd.AddCommand(deleteSCmd)
 	rootCmd.AddCommand(utilSCmd)
-	rootCmd.AddCommand(getSCmd) //TODO: add flags to getSCmd user_id rent_id all
+	rootCmd.AddCommand(getSCmd)
 	rootCmd.AddCommand(insertSCmd)
 	rootCmd.AddCommand(updateSCmd)
 	rootCmd.AddCommand(calcSCmd)
